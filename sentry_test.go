@@ -131,3 +131,67 @@ func TestVerifyF09StepErrorStaysThrottled(t *testing.T) {
 		t.Fatalf("want 1 step_error report per hour, got %d", n)
 	}
 }
+
+// A malformed DSN must not be echoed: its user part is the project key.
+func TestBadDSNNotEchoed(t *testing.T) {
+	t.Setenv("SENTRY_DSN", "https://s3cr3tkey@o123.ingest.sentry.io:abc/456")
+	_, _, err := initSentry()
+	if err == nil {
+		t.Fatal("want an error for a malformed DSN")
+	}
+	if strings.Contains(err.Error(), "s3cr3tkey") {
+		t.Fatalf("error leaks the DSN key: %v", err)
+	}
+}
+
+// Values reach Sentry readable: an error as its text (JSON would make it {}),
+// and attributes under WithGroup keep their group as a key prefix.
+func TestSentryHandlerFieldValues(t *testing.T) {
+	var got map[string]any
+	h := newSentryHandler(slog.NewTextHandler(io.Discard, nil))
+	h.send = func(_ sentry.Level, _ string, f map[string]any) { got = f }
+	log := slog.New(h)
+
+	log.Warn("a", "err", errors.New("boom"))
+	if got["err"] != "boom" {
+		t.Errorf("err field = %#v, want \"boom\"", got["err"])
+	}
+	log.WithGroup("node").Warn("b", "height", 5)
+	if got["node.height"] != int64(5) {
+		t.Errorf("grouped field: %#v", got)
+	}
+}
+
+type sent struct {
+	level  sentry.Level
+	msg    string
+	fields map[string]any
+}
+
+// Warn/Error go to Sentry, Info does not, and repeats are throttled.
+func TestSentryHandlerForwardsAndThrottles(t *testing.T) {
+	var got []sent
+	now := time.Unix(0, 0)
+	h := newSentryHandler(slog.NewTextHandler(io.Discard, nil))
+	h.now = func() time.Time { return now }
+	h.send = func(l sentry.Level, m string, f map[string]any) { got = append(got, sent{l, m, f}) }
+	log := slog.New(h).With("node", "q2")
+
+	log.Info("step_done", "target", 1)
+	log.Warn("step_stuck", "target", 2)
+	log.Error("step_error", "err", "boom")
+	log.Warn("paused_low_memory", "mem_avail_gib", 3)
+	log.Warn("paused_low_memory", "mem_avail_gib", 2) // throttled
+	now = now.Add(sentryThrottle + time.Second)
+	log.Warn("paused_low_memory", "mem_avail_gib", 1)
+
+	if len(got) != 4 {
+		t.Fatalf("want 4 reports, got %d: %+v", len(got), got)
+	}
+	if got[0].msg != "step_stuck" || got[0].level != sentry.LevelWarning || got[0].fields["node"] != "q2" {
+		t.Fatalf("bad first report: %+v", got[0])
+	}
+	if got[1].level != sentry.LevelError || got[1].fields["err"] != "boom" {
+		t.Fatalf("bad error report: %+v", got[1])
+	}
+}

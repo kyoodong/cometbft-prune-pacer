@@ -21,6 +21,41 @@ import (
 	"google.golang.org/grpc"
 )
 
+// blockRetainOnly answers the C1/C2 probe so preflight gets past gRPC.
+type blockRetainOnly struct {
+	pruningv1.UnimplementedPruningServiceServer
+}
+
+// TestF07RunWithHostPortAddr drives the real entry point run() past C1/C2
+// with a reachable gRPC server and a host:port --rpc-addr / --metrics-addr.
+// run must return an error (exit 1), not panic (exit 2).
+func TestF07RunWithHostPortAddr(t *testing.T) {
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := grpc.NewServer()
+	pruningv1.RegisterPruningServiceServer(srv, &blockRetainOnly{})
+	go func() { _ = srv.Serve(lis) }()
+	defer srv.Stop()
+	t.Setenv("SENTRY_DSN", "")
+
+	base := []string{"--max-step", "300", "--min-retain", "1000", "--listen", "", "--grpc-addr", lis.Addr().String()}
+	cases := map[string][]string{
+		"rpc-addr host:port":     {"--rpc-addr", "127.0.0.1:26657", "--metrics-addr", ""},
+		"metrics-addr host:port": {"--rpc-addr", "http://127.0.0.1:1", "--metrics-addr", "127.0.0.1:26660/metrics"},
+	}
+	for name, extra := range cases {
+		noPanic(t, "run "+name, func() {
+			err := run(append(append([]string{}, base...), extra...))
+			t.Logf("%s: run returned %v", name, err)
+			if err == nil {
+				t.Errorf("%s: want error", name)
+			}
+		})
+	}
+}
+
 // f10Pruning is a privileged gRPC PruningService whose indexer retain
 // heights are already far above the lowest indexed height (C6 fails).
 type f10Pruning struct {

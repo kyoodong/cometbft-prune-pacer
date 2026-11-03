@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -40,7 +41,9 @@ func newFakeNode(low, latest int64, emptyFrom, emptyTo int64) *fakeNode {
 func (f *fakeNode) Status(context.Context) (int64, int64, bool, error) {
 	return f.latest, 0, f.catching, nil
 }
+
 func (f *fakeNode) TxHashesAt(_ context.Context, h int64) ([]string, error) { return f.txs[h], nil }
+
 func (f *fakeNode) TxIndexed(_ context.Context, hash string) (bool, error) {
 	for _, hs := range f.txs {
 		for _, x := range hs {
@@ -51,11 +54,14 @@ func (f *fakeNode) TxIndexed(_ context.Context, hash string) (bool, error) {
 	}
 	return false, nil
 }
+
 func (f *fakeNode) BlockIndexed(_ context.Context, h int64) (bool, error) { return f.blocks[h], nil }
+
 func (f *fakeNode) GetRetain(_ context.Context, r Retain) (int64, bool, error) {
 	h, ok := f.retain[r]
 	return h, ok, nil
 }
+
 func (f *fakeNode) SetRetain(_ context.Context, r Retain, h int64) error {
 	if cur, ok := f.retain[r]; ok && h < cur {
 		return errors.New("cannot lower retain height")
@@ -67,7 +73,9 @@ func (f *fakeNode) SetRetain(_ context.Context, r Retain, h int64) error {
 	}
 	return nil
 }
-func (f *fakeNode) MemAvailable() (uint64, error)                { return f.memAvail, nil }
+
+func (f *fakeNode) MemAvailable() (uint64, error) { return f.memAvail, nil }
+
 func (f *fakeNode) Metric(context.Context, string) (int64, bool) { return 0, false }
 
 // tick runs the simulated pruner once its lag has elapsed.
@@ -172,18 +180,6 @@ func TestLowestIndexed(t *testing.T) {
 	}
 }
 
-// C6: a retain height far above the lowest indexed height must stop startup.
-func TestPreflightRejectsLargeExistingTarget(t *testing.T) {
-	f := newFakeNode(1000, 5000, 0, 0)
-	f.retain[RetainTxIndexer] = 3000
-	cfg := &Config{MaxStep: 300, MinRetain: 1000}
-	err := preflight(context.Background(), cfg, f, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	var cf *checkFailure
-	if !errors.As(err, &cf) || cf.ID != "C6" {
-		t.Fatalf("want C6 failure, got %v", err)
-	}
-}
-
 // After a daemon restart mid-step, the pacer waits for that step first.
 func TestResumeWaitsForRunningStep(t *testing.T) {
 	f := newFakeNode(1000, 5000, 0, 0)
@@ -195,5 +191,190 @@ func TestResumeWaitsForRunningStep(t *testing.T) {
 	}
 	if _, ok := f.txs[1299]; ok {
 		t.Fatal("resume returned before the running step finished")
+	}
+}
+
+// blipNode is a fakeNode whose TxIndexed fails `fail` times (node restarting,
+// connection refused). Every tx-indexer Set records whether the previous
+// step's range was still indexed at that moment (an S2 violation).
+type blipNode struct {
+	*fakeNode
+	fail       int
+	violations []string
+}
+
+func (n *blipNode) TxIndexed(ctx context.Context, h string) (bool, error) {
+	if n.fail > 0 {
+		n.fail--
+		return false, errors.New("dial tcp 127.0.0.1:26657: connect: connection refused")
+	}
+	return n.fakeNode.TxIndexed(ctx, h)
+}
+
+func (n *blipNode) SetRetain(ctx context.Context, r Retain, h int64) error {
+	if prev, ok := n.retain[RetainTxIndexer]; ok && r == RetainTxIndexer {
+		for th := range n.txs {
+			if th < prev {
+				n.violations = append(n.violations, fmt.Sprintf("Set(%d) while tx at %d < previous target %d still indexed", h, th, prev))
+				break
+			}
+		}
+	}
+	return n.fakeNode.SetRetain(ctx, r, h)
+}
+
+// F1: one transient error while waiting for a step must not let Run issue
+// the next Set before that step is proven done (S2), nor make the node
+// prune more than max-step heights at once (S1).
+func TestVerifyF01TransientErrorInWaitGoneKeepsS2(t *testing.T) {
+	f := newFakeNode(1000, 5000, 0, 0)
+	f.lag = 3
+	n := &blipNode{fakeNode: f, fail: 1}
+	p := testPacer(f, 300, 1000)
+	p.node = n
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	sleeps := 0
+	p.sleep = func(ctx context.Context, _ time.Duration) error {
+		f.tick()
+		if sleeps++; sleeps >= 40 {
+			cancel()
+		}
+		return ctx.Err()
+	}
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("setHistory=%v maxInMem=%d violations=%v", f.setHistory, f.maxInMem, n.violations)
+	if len(f.setHistory) < 2 {
+		t.Fatalf("vacuous: only %d Set(s) issued", len(f.setHistory))
+	}
+	if len(n.violations) > 0 {
+		t.Errorf("S2 violated: %s", n.violations[0])
+	}
+	if f.maxInMem > 300 {
+		t.Errorf("S1 violated: node pruned %d heights at once (max-step 300)", f.maxInMem)
+	}
+}
+
+// cometPruner models the node-side kv pruning confirmed against CometBFT
+// v1.0.1 (state/txindex/kv/kv.go Prune): the lower bound comes from
+// LastTxIndexerRetainHeightKey, which is written only on the delete-error
+// path, so it stays 1 and one Prune(target) deletes every tx below target.
+// Unlike fakeNode.tick it does not assume the tx index and block index start
+// at the same height.
+type cometPruner struct {
+	*fakeNode
+	maxTxHeightsPerPrune int64
+}
+
+func (c *cometPruner) prune() {
+	var n int64
+	for h := range c.txs {
+		if h < c.retain[RetainTxIndexer] {
+			delete(c.txs, h)
+			n++
+		}
+	}
+	for h := range c.blocks {
+		if h < c.retain[RetainBlockIndexer] {
+			delete(c.blocks, h)
+		}
+	}
+	c.maxTxHeightsPerPrune = max(c.maxTxHeightsPerPrune, n)
+}
+
+// F2: whatever the first step's base is, the node must never be asked to
+// prune more than max-step tx heights at once. Refusing to start (an error,
+// no Set) is also correct.
+func TestVerifyF02FirstStepBoundedByLowestTx(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(f *fakeNode, p *Pacer)
+	}{
+		{"block index starts at 1500, tx index at 1000", func(f *fakeNode, _ *Pacer) {
+			for h := int64(1000); h < 1500; h++ {
+				delete(f.blocks, h)
+			}
+		}},
+		{"one-height block-index hole at 2500 hit by the binary search", func(f *fakeNode, _ *Pacer) {
+			delete(f.blocks, 2500)
+		}},
+		{"--start-height=3000 above lowest indexed 1000", func(_ *fakeNode, p *Pacer) {
+			p.cfg.StartHeight = 3000
+		}},
+		{"control: contiguous indexes from 1000, auto start", func(*fakeNode, *Pacer) {}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFakeNode(1000, 5000, 0, 0)
+			c := &cometPruner{fakeNode: f}
+			p := testPacer(f, 300, 1000)
+			p.node = c
+			p.sleep = func(ctx context.Context, _ time.Duration) error { c.prune(); return ctx.Err() }
+			tc.setup(f, p)
+			err := p.step(context.Background())
+			t.Logf("start=%d setHistory=%v err=%v txHeightsPrunedAtOnce=%d (max-step 300)",
+				p.start, f.setHistory, err, c.maxTxHeightsPerPrune)
+			if len(f.setHistory) == 0 && err == nil {
+				t.Fatal("vacuous: no Set and no error")
+			}
+			if c.maxTxHeightsPerPrune > 300 {
+				t.Fatalf("first Set %v made the node prune %d tx heights at once (> max-step 300)",
+					f.setHistory, c.maxTxHeightsPerPrune)
+			}
+		})
+	}
+}
+
+// The indexer runs behind the block store; a few unindexed heights at the
+// top must not make the lowest-height search fail.
+func TestLowestIndexedWithIndexerLag(t *testing.T) {
+	f := newFakeNode(1000, 5000, 0, 0)
+	for h := int64(4995); h <= 5000; h++ {
+		delete(f.blocks, h) // indexer 6 blocks behind
+	}
+	low, err := lowestIndexed(context.Background(), f, 5000)
+	if err != nil || low != 1000 {
+		t.Fatalf("lowestIndexed = %d, %v; want 1000", low, err)
+	}
+}
+
+// SIGTERM while resume() waits for an in-flight step is a clean shutdown,
+// same as during the main loop; it used to return context.Canceled (exit 1).
+func TestShutdownDuringResumeIsClean(t *testing.T) {
+	f := newFakeNode(1000, 5000, 0, 0)
+	f.retain[RetainTxIndexer], f.retain[RetainBlockIndexer] = 1300, 1300 // Set, not yet pruned
+	f.lag = 1 << 30
+	f.pending = f.lag
+	p := testPacer(f, 300, 1000)
+	ctx, cancel := context.WithCancel(context.Background())
+	p.sleep = func(ctx context.Context, _ time.Duration) error { cancel(); return ctx.Err() }
+	if err := p.Run(ctx); err != nil {
+		t.Fatalf("Run after SIGTERM during resume: %v", err)
+	}
+}
+
+type baseNode struct {
+	*fakeNode
+	earliest int64
+}
+
+func (n baseNode) Status(ctx context.Context) (int64, int64, bool, error) {
+	l, _, c, err := n.fakeNode.Status(ctx)
+	return l, n.earliest, c, err
+}
+
+// When the block store base is already above the ceiling there is nothing to
+// prune; Set would be refused (heightWithinBounds) and warn on every step.
+func TestKeepBlocksSkipsBelowStoreBase(t *testing.T) {
+	f := newFakeNode(1000, 5000, 0, 0)
+	p := testPacer(f, 300, 1000) // ceiling 4000
+	p.node = baseNode{f, 4500}
+	var logs strings.Builder
+	p.log = slog.New(slog.NewTextHandler(&logs, nil))
+	_ = p.step(context.Background())
+	if _, set := f.retain[RetainBlock]; set {
+		t.Errorf("block retain set to %d below the store base 4500", f.retain[RetainBlock])
 	}
 }
