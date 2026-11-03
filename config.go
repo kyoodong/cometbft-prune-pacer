@@ -77,6 +77,8 @@ func parseConfig(args []string) (*Config, error) {
 		return nil, errors.New("--poll, --wait and --step-timeout must be > 0")
 	}
 	c.RPCAddr = strings.TrimRight(c.RPCAddr, "/")
+	// Accept laddr as written in config.toml; gRPC wants host:port.
+	c.GRPCAddr = strings.TrimPrefix(c.GRPCAddr, "tcp://")
 	return c, nil
 }
 

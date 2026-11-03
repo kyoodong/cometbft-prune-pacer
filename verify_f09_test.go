@@ -53,7 +53,7 @@ enabled = true
 	var logs strings.Builder
 	h.next = slog.NewTextHandler(&logs, nil)
 	f := newFakeNode(1000, 5000, 0, 0) // Metric() returns false -> C5
-	cfg := &Config{MaxStep: 300, MinRetain: 1000, Home: home}
+	cfg := &Config{MaxStep: 300, MinRetain: 1000, Home: home, GRPCAddr: "127.0.0.1:26659"}
 	if err := preflight(context.Background(), cfg, f, slog.New(h)); err != nil {
 		t.Fatalf("preflight: %v", err)
 	}

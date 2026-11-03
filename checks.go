@@ -55,8 +55,8 @@ func preflight(ctx context.Context, cfg *Config, n Node, log *slog.Logger) error
 	// C1/C2: privileged gRPC reachable and PruningService enabled.
 	if _, _, err := n.GetRetain(ctx, RetainBlock); err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
-			return &checkFailure{"C2", "PruningService is not enabled",
-				`config.toml: [grpc.privileged.pruning_service] enabled = true, then restart the node`}
+			return &checkFailure{"C2", "PruningService is not enabled at " + cfg.GRPCAddr,
+				`config.toml: [grpc.privileged.pruning_service] enabled = true, then restart the node; or --grpc-addr points at the non-privileged [grpc] port instead of [grpc.privileged] laddr`}
 		}
 		// The companion block retain key is only created when data companion
 		// pruning is enabled, so this also catches C3 without --home.
@@ -66,6 +66,11 @@ func preflight(ctx context.Context, cfg *Config, n Node, log *slog.Logger) error
 		}
 		return &checkFailure{"C1", "privileged gRPC is not reachable at " + cfg.GRPCAddr + ": " + err.Error(),
 			`config.toml: [grpc.privileged] laddr = "tcp://127.0.0.1:26659" (bind to 127.0.0.1 only), then restart the node`}
+	}
+
+	// The privileged gRPC has no authentication; it should only be reached locally.
+	if !localLaddr(cfg.GRPCAddr) {
+		log.Warn("check_warn", "id", "C1", "msg", "--grpc-addr "+cfg.GRPCAddr+" is not loopback; the privileged gRPC has no authentication")
 	}
 
 	if cfg.Home == "" {
