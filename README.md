@@ -269,18 +269,20 @@ SENTRY_ENVIRONMENT=production
 
 ## Startup checks
 
-The daemon exits with a fix hint if any of these fail:
+The daemon exits with a fix hint if any of these fail (C1 with exit code 1,
+retried by systemd; the others with exit code 3):
 
 | ID | Check |
 |---|---|
 | C1 | privileged gRPC reachable |
 | C2 | `PruningService` enabled |
-| C3 | data companion enabled (`--home`) |
+| C3 | data companion enabled (from the gRPC answer, and from `config.toml` with `--home`) |
 | C4 | `indexer = "kv"` (`--home`) |
 | C6 | no indexer retain height already more than `--max-step` above the lowest indexed height (it cannot be lowered and would be pruned in one go) |
 
-Warnings only: C5 Prometheus unreachable, C7 `min-retain-blocks = 0`,
-C8 `discard_abci_responses = true`.
+Warnings only: C1 privileged gRPC `laddr` not bound to loopback (`--home`),
+C5 Prometheus unreachable, C7 `min-retain-blocks = 0` or `app.toml`
+unreadable (`--home`). Info: C8 `discard_abci_responses = true` (`--home`).
 
 ## Settings that compete with the retain heights
 

@@ -38,11 +38,11 @@ files or `grpcurl` are needed.
 |---|---|---|
 | C1 | privileged gRPC reachable | exit 1 (retried by systemd), hint `[grpc.privileged] laddr` |
 | C2 | `PruningService` enabled (not `Unimplemented`) | exit, hint `pruning_service.enabled` |
-| C3 | `data_companion.enabled = true` (needs `--home`) | exit — `Pruner.OnStart` only starts `pruneIndexesRoutine` when it is set |
+| C3 | `data_companion.enabled = true` (gRPC `Failed to get companion block retain height`, or `config.toml` with `--home`) | exit — `Pruner.OnStart` only starts `pruneIndexesRoutine` when it is set |
 | C4 | `indexer = "kv"` (needs `--home`) | exit |
 | C5 | Prometheus reachable | warn |
 | C6 | existing indexer retain height ≤ lowest indexed height + `max-step` | exit — the node would prune the whole gap at once |
-| C7 | `min-retain-blocks > 0` (needs `--home`) | warn — block pruning is off otherwise |
+| C7 | `min-retain-blocks > 0` (needs `--home`) | warn — block pruning is off otherwise; an unreadable `app.toml` is also only a warning |
 | C8 | `discard_abci_responses` | info — nothing to prune in block results when true |
 
 Every other failing check exits with code 3: it is a config error, and the
