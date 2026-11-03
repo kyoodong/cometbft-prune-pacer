@@ -127,12 +127,15 @@ func (m *metrics) stepStuck() {
 	}
 }
 
-func (m *metrics) stepDone(d time.Duration, empty bool) {
+func (m *metrics) stepDone(d time.Duration, empty, count bool) {
 	if m == nil {
 		return
 	}
 	m.inProgress.Set(0)
 	m.stuck.Set(0)
+	if !count {
+		return
+	}
 	m.steps.Inc()
 	if empty {
 		m.emptySteps.Inc()

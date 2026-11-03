@@ -108,7 +108,7 @@ func TestF06WitnessErrorRetryIsPaced(t *testing.T) {
 		}
 		n.txErr = errors.New("dial tcp 127.0.0.1:26657: connection refused")
 		ctx, cancel := context.WithTimeout(context.Background(), f06Window)
-		err := p.waitGone(ctx, witness{txHashes: []string{"TX1299A"}}, 1300)
+		err := p.waitGone(ctx, witness{txHashes: []string{"TX1299A"}}, 1300, true)
 		cancel()
 		got := n.txIndexed.Load()
 		t.Logf("--poll %s, node down: TxIndexed called %d times in %v (waitGone err=%v)", poll, got, f06Window, err)

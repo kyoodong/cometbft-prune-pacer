@@ -82,12 +82,20 @@ func (p *Pacer) resume(ctx context.Context) error {
 	if err != nil || !ok {
 		return err
 	}
+	// Show the real heights while waiting; the gauges start at 0 in a new process.
+	if latest, _, _, err := p.node.Status(ctx); err == nil {
+		ceiling := latest - p.cfg.MinRetain
+		p.m.observeHeights(latest, ceiling)
+		p.m.observeTarget(cur, ceiling)
+	}
 	w, err := p.pickWitness(ctx, max(cur-p.cfg.MaxStep, 1), cur)
 	if err != nil {
 		return err
 	}
 	p.log.Info("resume", "target", cur, "tx_witness", len(w.txHashes), "block_witness", w.blockHeight)
-	return p.waitGone(ctx, w, cur)
+	// Not counted as a step: it was Set by an earlier process, and its
+	// duration here would be measured from this process's start.
+	return p.waitGone(ctx, w, cur, false)
 }
 
 // indexTarget returns the lower of the two indexer retain heights.
@@ -172,7 +180,7 @@ func (p *Pacer) step(ctx context.Context) error {
 		}
 	}
 	p.m.observeTarget(next, ceiling)
-	return p.waitGone(ctx, w, next)
+	return p.waitGone(ctx, w, next, true)
 }
 
 // keepBlocks moves the block and block-results retain heights to the
@@ -299,7 +307,8 @@ func (p *Pacer) pickWitness(ctx context.Context, from, to int64) (witness, error
 
 // waitGone polls until both witnesses are deleted. It never gives up: moving
 // on early would let the next step merge with leftovers and exceed MaxStep.
-func (p *Pacer) waitGone(ctx context.Context, w witness, target int64) error {
+// count records the step in steps_total and step_duration_seconds.
+func (p *Pacer) waitGone(ctx context.Context, w witness, target int64, count bool) error {
 	began := p.now()
 	warned := false
 	p.m.stepStarted()
@@ -317,7 +326,7 @@ func (p *Pacer) waitGone(ctx context.Context, w witness, target int64) error {
 		if !txLeft && !blkLeft {
 			txBase, _ := p.node.Metric(ctx, "tx_indexer_base_height")
 			blkBase, _ := p.node.Metric(ctx, "block_indexer_base_height")
-			p.m.stepDone(p.now().Sub(began), len(w.txHashes) == 0)
+			p.m.stepDone(p.now().Sub(began), len(w.txHashes) == 0, count)
 			p.log.Info("step_done", "target", target, "seconds", int(p.now().Sub(began).Seconds()),
 				"tx_base", txBase, "block_base", blkBase)
 			return nil
