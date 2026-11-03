@@ -58,6 +58,12 @@ func preflight(ctx context.Context, cfg *Config, n Node, log *slog.Logger) error
 			return &checkFailure{"C2", "PruningService is not enabled",
 				`config.toml: [grpc.privileged.pruning_service] enabled = true, then restart the node`}
 		}
+		// The companion block retain key is only created when data companion
+		// pruning is enabled, so this also catches C3 without --home.
+		if s, ok := status.FromError(err); ok && s.Code() == codes.Internal && strings.Contains(s.Message(), "companion") {
+			return &checkFailure{"C3", "data companion pruning is disabled; the node never prunes its indexes",
+				"config.toml: [storage.pruning.data_companion] enabled = true, then restart the node"}
+		}
 		return &checkFailure{"C1", "privileged gRPC is not reachable at " + cfg.GRPCAddr + ": " + err.Error(),
 			`config.toml: [grpc.privileged] laddr = "tcp://127.0.0.1:26659" (bind to 127.0.0.1 only), then restart the node`}
 	}

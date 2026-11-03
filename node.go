@@ -194,7 +194,13 @@ func (n *liveNode) GetRetain(ctx context.Context, r Retain) (int64, bool, error)
 	if err != nil {
 		// An indexer retain height that was never set comes back as
 		// Internal "Failed to get ... retain height" (node log: key not found).
-		if s, ok := status.FromError(err); ok && s.Code() == codes.Internal && strings.Contains(s.Message(), "Failed to get") {
+		// Only indexer keys can be unset: the block and block-results keys
+		// exist whenever data companion pruning is enabled, so the same error
+		// there is returned (preflight turns it into C3).
+		// ponytail: the node wraps real DB read errors in the same message, so
+		// those also read as "unset"; the following Set is then refused, not lowered.
+		indexer := r == RetainTxIndexer || r == RetainBlockIndexer
+		if s, ok := status.FromError(err); ok && indexer && s.Code() == codes.Internal && strings.Contains(s.Message(), "Failed to get") {
 			return 0, false, nil
 		}
 		return 0, false, err
