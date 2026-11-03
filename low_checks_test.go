@@ -40,3 +40,22 @@ func TestC7UnreadableAppTomlOnlyWarns(t *testing.T) {
 		}
 	}
 }
+
+// The privileged gRPC exposure warning must parse the address, not match
+// substrings.
+func TestLocalLaddr(t *testing.T) {
+	for l, want := range map[string]bool{
+		"tcp://127.0.0.1:26659":              true,
+		"tcp://localhost:26659":              true,
+		"tcp://[::1]:26659":                  true,
+		"unix:///var/run/privileged.sock":    true,
+		"127.0.0.1:26659":                    true,
+		"tcp://0.0.0.0:26659":                false,
+		"tcp://10.0.0.5:26659":               false,
+		"tcp://127.0.0.1.evil.example:26659": false,
+	} {
+		if got := localLaddr(l); got != want {
+			t.Errorf("localLaddr(%q) = %v, want %v", l, got, want)
+		}
+	}
+}

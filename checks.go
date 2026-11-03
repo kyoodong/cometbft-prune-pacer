@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"path/filepath"
 	"strings"
 
@@ -118,7 +119,7 @@ func checkConfigFiles(home string, log *slog.Logger) error {
 		return &checkFailure{"C4", fmt.Sprintf("tx indexer is %q; only \"kv\" can be pruned", cc.TxIndex.Indexer),
 			`nothing to do unless config.toml has [tx_index] indexer = "kv"`}
 	}
-	if l := cc.GRPC.Privileged.Laddr; l != "" && !strings.Contains(l, "127.0.0.1") && !strings.Contains(l, "localhost") {
+	if l := cc.GRPC.Privileged.Laddr; l != "" && !localLaddr(l) {
 		log.Warn("check_warn", "id", "C1", "msg", "privileged gRPC listens on "+l+"; anyone who can reach it can prune this node")
 	}
 	if cc.Storage.DiscardABCIResponses {
@@ -136,4 +137,25 @@ func checkConfigFiles(home string, log *slog.Logger) error {
 			"msg", "app.toml min-retain-blocks = 0: the app never reports a retain height, so block pruning stays off; index pruning still works")
 	}
 	return nil
+}
+
+// localLaddr reports whether a CometBFT laddr ("tcp://host:port" or
+// "unix://path") only accepts local connections.
+func localLaddr(l string) bool {
+	if strings.HasPrefix(l, "unix://") {
+		return true
+	}
+	addr := l
+	if _, a, ok := strings.Cut(l, "://"); ok {
+		addr = a
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
