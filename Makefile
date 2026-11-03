@@ -4,7 +4,6 @@ ifeq ($(VERSION),)
 $(warning git describe failed (not a git checkout, or "dubious ownership" when building another user's clone as root): version is "dev")
 VERSION := dev
 endif
-PREFIX  ?= /usr/local
 GOOS    ?= linux
 GOARCH  ?= amd64
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -22,10 +21,10 @@ build-linux:
 test:
 	go test -count=1 ./...
 
-## install: build here and copy to $(PREFIX)/bin (run on the node; needs root)
-install: build
-	install -d $(DESTDIR)$(PREFIX)/bin
-	install -m 0755 bin/$(BINARY) $(DESTDIR)$(PREFIX)/bin/$(BINARY)
+## install: go install with the git version -> $(go env GOPATH)/bin (or GOBIN); no root
+install:
+	CGO_ENABLED=0 go install -trimpath -ldflags "$(LDFLAGS)" ./cmd/$(BINARY)
+	@echo "installed $$(go env GOBIN)$$( [ -n "$$(go env GOBIN)" ] || echo "$$(go env GOPATH)/bin")/$(BINARY)"
 
 clean:
 	rm -rf bin

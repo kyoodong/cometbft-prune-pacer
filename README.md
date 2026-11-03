@@ -108,8 +108,12 @@ On the node, if it has Go 1.26+ (the `go` line in go.mod):
 ```sh
 git clone https://github.com/kyoodong/cometbft-prune-pacer.git
 cd cometbft-prune-pacer
-make install            # builds and copies to /usr/local/bin (PREFIX=... to change)
+make install            # go install -> $(go env GOPATH)/bin, as the node user; no root
 ```
+
+`make install` prints the path, e.g. `/home/injective/go/bin/cometbft-prune-pacer`
+(or `~/.go/bin` if that is the user's `GOPATH`); the unit in step 4 points
+there. Upgrade: `git pull && make install`, then restart the service.
 
 Or build elsewhere and copy the static binary over:
 
@@ -120,6 +124,7 @@ scp bin/cometbft-prune-pacer-linux-amd64 root@<node>:/usr/local/bin/cometbft-pru
 
 Other targets: `make build` (this machine), `make test`, `make clean`. The
 version printed by `cometbft-prune-pacer version` comes from `git describe`.
+A plain `go install …@version` without `make` prints `dev`.
 
 ### 2. Prepare the node
 
@@ -132,7 +137,8 @@ version printed by `cometbft-prune-pacer version` comes from `git describe`.
 
 ### 3. Dry run
 
-Runs every startup check and logs the first step without calling Set:
+Runs every startup check and logs the first step without calling Set (use the
+full path from `make install` if `$(go env GOPATH)/bin` is not on `PATH`):
 
 ```sh
 cometbft-prune-pacer run --dry-run --max-step 10000 --min-retain 1430000 --home /path/to/node/home
@@ -161,7 +167,10 @@ EnvironmentFile=-/etc/cometbft-prune-pacer.env
 Environment=PACER_MAX_STEP=10000
 Environment=PACER_MIN_RETAIN=1430000
 Environment=PACER_HOME=/path/to/node/home
-ExecStart=/usr/local/bin/cometbft-prune-pacer run
+# Path printed by `make install` ($(go env GOPATH)/bin), or /usr/local/bin if
+# copied with scp. The binary is owned by the same user the service runs as;
+# never point a root service at a binary a normal user can overwrite.
+ExecStart=/home/injective/go/bin/cometbft-prune-pacer run
 Restart=on-failure
 RestartSec=60
 # Exit code 3 = config error; restarting will not fix it.
@@ -209,7 +218,8 @@ memory during the first few steps before leaving it unattended; lower
 
 ```sh
 systemctl disable --now cometbft-prune-pacer
-rm /etc/systemd/system/cometbft-prune-pacer.service /usr/local/bin/cometbft-prune-pacer
+rm /etc/systemd/system/cometbft-prune-pacer.service
+rm /home/injective/go/bin/cometbft-prune-pacer   # or /usr/local/bin/... if copied there
 systemctl daemon-reload
 ```
 
