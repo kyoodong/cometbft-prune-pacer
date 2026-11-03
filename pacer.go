@@ -303,6 +303,10 @@ func (p *Pacer) pickWitness(ctx context.Context, from, to int64) (witness, error
 	} else if ok {
 		w.blockHeight = to - 1
 	}
+	// ponytail: one tx_search per height, so an empty range (or resume after a
+	// finished step) costs up to MaxStep local RPC calls. A range query would
+	// be one call but scans the whole tx.height index; go there only if this
+	// shows up in the node's RPC latency.
 	for h := to - 1; h >= from; h-- {
 		hashes, err := p.node.TxHashesAt(ctx, h)
 		if err != nil {
