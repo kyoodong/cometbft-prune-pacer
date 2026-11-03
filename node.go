@@ -61,15 +61,24 @@ type liveNode struct {
 	prune   pruningv1.PruningServiceClient
 }
 
+// rpcTimeout bounds every RPC and gRPC call, so a hung node stalls one call,
+// not the daemon. A var so tests can shorten it.
+var rpcTimeout = 60 * time.Second
+
 func dialNode(c *Config) (*liveNode, error) {
-	conn, err := grpc.NewClient(c.GRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(c.GRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+			ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
+			defer cancel()
+			return invoker(ctx, method, req, reply, cc, opts...)
+		}))
 	if err != nil {
 		return nil, err
 	}
 	return &liveNode{
 		rpc:     c.RPCAddr,
 		metrics: c.MetricsAddr,
-		http:    &http.Client{Timeout: 60 * time.Second},
+		http:    &http.Client{Timeout: rpcTimeout},
 		conn:    conn,
 		prune:   pruningv1.NewPruningServiceClient(conn),
 	}, nil
