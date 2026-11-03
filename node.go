@@ -80,7 +80,10 @@ func (n *liveNode) getJSON(ctx context.Context, path string, q url.Values, out a
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return err
+	}
 	resp, err := n.http.Do(req)
 	if err != nil {
 		return err
@@ -237,7 +240,10 @@ func (n *liveNode) Metric(ctx context.Context, name string) (int64, bool) {
 	if n.metrics == "" {
 		return 0, false
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, n.metrics, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, n.metrics, nil)
+	if err != nil {
+		return 0, false
+	}
 	resp, err := n.http.Do(req)
 	if err != nil {
 		return 0, false
