@@ -100,7 +100,7 @@ cometbft-prune-pacer run --max-step 10000 --min-retain 1430000 --home /path/to/n
 
 ### 1. Get the binary
 
-On the node, if it has Go 1.23+:
+On the node, if it has Go 1.26+ (the `go` line in go.mod):
 
 ```sh
 git clone https://github.com/kyoodong/cometbft-prune-pacer.git
