@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -80,10 +81,18 @@ func TestMetricsEndpoint(t *testing.T) {
 	m.observeTarget(10, 30)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	m.serve(ctx, "127.0.0.1:26671", slog.New(slog.NewTextHandler(io.Discard, nil)))
+	// A free port, not a fixed one: another process on a fixed port could
+	// answer instead and the test would read its body.
+	lis, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := lis.Addr().String()
+	_ = lis.Close()
+	m.serve(ctx, addr, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	var body string
 	for i := 0; i < 50; i++ {
-		resp, err := http.Get("http://127.0.0.1:26671/metrics")
+		resp, err := http.Get("http://" + addr + "/metrics")
 		if err == nil {
 			b, _ := io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
