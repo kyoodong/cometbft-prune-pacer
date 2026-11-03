@@ -202,6 +202,19 @@ func (p *Pacer) raise(ctx context.Context, r Retain, h int64) error {
 	return nil
 }
 
+// witnessLeft reports whether any tx witness or the block witness is still indexed.
+func (p *Pacer) witnessLeft(ctx context.Context, w witness) (txLeft, blkLeft bool, err error) {
+	for _, h := range w.txHashes {
+		if txLeft, err = p.node.TxIndexed(ctx, h); err != nil || txLeft {
+			return txLeft, false, err
+		}
+	}
+	if w.blockHeight > 0 {
+		blkLeft, err = p.node.BlockIndexed(ctx, w.blockHeight)
+	}
+	return false, blkLeft, err
+}
+
 // startHeight is the base of the very first step.
 func (p *Pacer) startHeight(ctx context.Context, latest int64) (int64, error) {
 	if p.start > 0 {
@@ -280,20 +293,15 @@ func (p *Pacer) waitGone(ctx context.Context, w witness, target int64) error {
 	warned := false
 	p.m.stepStarted()
 	for {
-		txLeft, blkLeft := false, false
-		var err error
-		for _, h := range w.txHashes {
-			if txLeft, err = p.node.TxIndexed(ctx, h); err != nil {
+		txLeft, blkLeft, err := p.witnessLeft(ctx, w)
+		if err != nil {
+			// Keep the witness and retry: returning would let the next step
+			// Set a new target before this one is proven done (S2).
+			p.log.Warn("witness_check_failed", "target", target, "err", err.Error())
+			if err := p.sleep(ctx, p.cfg.Poll); err != nil {
 				return err
 			}
-			if txLeft {
-				break
-			}
-		}
-		if w.blockHeight > 0 {
-			if blkLeft, err = p.node.BlockIndexed(ctx, w.blockHeight); err != nil {
-				return err
-			}
+			continue
 		}
 		if !txLeft && !blkLeft {
 			txBase, _ := p.node.Metric(ctx, "tx_indexer_base_height")
