@@ -285,6 +285,9 @@ retried by systemd; the others with exit code 3):
 | C4 | `indexer = "kv"` (`--home`) |
 | C6 | no indexer retain height already more than `--max-step` above the lowest indexed height (it cannot be lowered and would be pruned in one go) |
 
+C3, C4 and C7 read the files under `--home`; values overridden by node flags
+or `CMT_*` environment variables are not seen.
+
 Warnings only: C1 privileged gRPC `laddr` not bound to loopback (`--home`),
 C5 Prometheus unreachable, C7 `min-retain-blocks = 0` or `app.toml`
 unreadable (`--home`), C9 `MemAvailable` unreadable (not Linux; the
