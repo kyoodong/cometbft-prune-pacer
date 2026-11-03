@@ -259,8 +259,10 @@ warnings and panics. Normal progress (`step_set`, `step_done`) stays in the
 logs. Each event is reported at most once per hour, grouped by event name plus
 the check id or retain kind (so `check_warn` C1, C5 and C7 are separate issues).
 The hourly limit lives in memory, so every restart reports its startup events
-again. C1 (node not reachable) is not sent: it is a node problem that systemd
-retries every `RestartSec`, and the node's own monitoring covers it.
+again. Node problems are not sent: C1 (privileged gRPC not reachable) and
+other startup errors such as the RPC being down exit with code 1, systemd
+retries them every `RestartSec`, and the node's own monitoring covers them.
+Once running, a failing node shows up as `step_error` (at most once per hour).
 
 With the systemd unit from step 4, put secrets in
 `/etc/cometbft-prune-pacer.env` (mode 600):
