@@ -23,12 +23,10 @@ func initSentry() (enabled bool, flush func(), err error) {
 	if dsn == "" {
 		return false, func() {}, nil
 	}
-	host, _ := os.Hostname()
+	// Environment (SENTRY_ENVIRONMENT) and ServerName (hostname) are SDK defaults.
 	err = sentry.Init(sentry.ClientOptions{
-		Dsn:         dsn,
-		Environment: os.Getenv("SENTRY_ENVIRONMENT"),
-		Release:     "cometbft-prune-pacer@" + version,
-		ServerName:  host,
+		Dsn:     dsn,
+		Release: "cometbft-prune-pacer@" + version,
 	})
 	if err != nil {
 		// The SDK error quotes the DSN, whose user part is the project key.
