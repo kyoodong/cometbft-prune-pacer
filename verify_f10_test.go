@@ -182,3 +182,25 @@ func TestVerifyF10CheckFailedAcrossRestarts(t *testing.T) {
 		t.Errorf("want at most 1 check_failed and 1 check_warn per hour across restarts, got %v", count)
 	}
 }
+
+// C1 (node not reachable) exits 1 and is retried every RestartSec; it must
+// not reach Sentry, or a down node sends one event per restart.
+func TestC1NotReportedToSentry(t *testing.T) {
+	ing := &f10Ingest{}
+	sentrySrv := httptest.NewServer(ing)
+	defer sentrySrv.Close()
+
+	args := []string{"--max-step", "300", "--min-retain", "1000", "--listen", "", "--grpc-addr", "127.0.0.1:1"}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestVerifyF10Child$")
+	cmd.Env = append(os.Environ(), "F10_CHILD=1", "F10_ARGS="+strings.Join(args, "\x1f"),
+		"SENTRY_DSN=http://public@"+strings.TrimPrefix(sentrySrv.URL, "http://")+"/1")
+	out, _ := cmd.CombinedOutput()
+	if code := cmd.ProcessState.ExitCode(); code != 1 || !strings.Contains(string(out), "[C1]") {
+		t.Fatalf("want C1 failure with exit 1, got exit %d:\n%s", code, out)
+	}
+	ing.mu.Lock()
+	defer ing.mu.Unlock()
+	if len(ing.events) != 0 {
+		t.Fatalf("C1 reached Sentry: %+v", ing.events)
+	}
+}

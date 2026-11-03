@@ -138,7 +138,12 @@ func sentryKey(msg string, fields map[string]any) []string {
 	return k
 }
 
-// reportCheckFailure sends a fatal startup check to Sentry before exit.
+// reportCheckFailure sends a fatal startup check to Sentry before exit. C1
+// (node not reachable) is a node problem, not a pacer one: systemd retries it
+// every RestartSec, and node monitoring already alerts on a down node.
 func reportCheckFailure(cf *checkFailure) {
+	if cf.ID == "C1" {
+		return
+	}
 	captureSentry(sentry.LevelError, "check_failed", map[string]any{"id": cf.ID, "what": cf.What, "fix": cf.Fix})
 }
