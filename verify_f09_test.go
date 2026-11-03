@@ -96,7 +96,7 @@ func TestVerifyF09RetainSetFailedPerRetain(t *testing.T) {
 	p := testPacer(f, 300, 1000)
 	p.node = failBlocksNode{f}
 	p.log = slog.New(h)
-	p.keepBlocks(context.Background(), 4000)
+	p.keepBlocks(context.Background(), 4000, 0)
 
 	retains := map[string]bool{}
 	for _, s := range *got {

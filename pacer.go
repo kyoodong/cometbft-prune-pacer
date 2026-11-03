@@ -121,7 +121,7 @@ func (p *Pacer) indexTarget(ctx context.Context) (int64, bool, error) {
 }
 
 func (p *Pacer) step(ctx context.Context) error {
-	latest, _, catching, err := p.node.Status(ctx)
+	latest, earliest, catching, err := p.node.Status(ctx)
 	if err != nil {
 		return err
 	}
@@ -146,7 +146,7 @@ func (p *Pacer) step(ctx context.Context) error {
 		return p.sleep(ctx, p.cfg.Wait)
 	}
 
-	p.keepBlocks(ctx, ceiling)
+	p.keepBlocks(ctx, ceiling, earliest)
 
 	cur, ok, err := p.indexTarget(ctx)
 	if err != nil {
@@ -187,13 +187,17 @@ func (p *Pacer) step(ctx context.Context) error {
 // keepBlocks moves the block and block-results retain heights to the
 // ceiling. Block pruning of millions of heights at once did not OOM in
 // practice, so no stepping is needed here.
-func (p *Pacer) keepBlocks(ctx context.Context, ceiling int64) {
+func (p *Pacer) keepBlocks(ctx context.Context, ceiling, earliest int64) {
+	// The block store base (earliest) is already above the ceiling: nothing to
+	// prune, and the node refuses a height below its base.
+	if ceiling < earliest {
+		return
+	}
 	for _, r := range []Retain{RetainBlock, RetainBlockResults} {
 		if p.cfg.DryRun {
 			continue
 		}
 		if err := p.raise(ctx, r, ceiling); err != nil {
-			// Typical cause: ceiling is below the block store base.
 			p.log.Warn("retain_set_failed", "retain", r.String(), "height", ceiling, "err", err.Error())
 		}
 	}
