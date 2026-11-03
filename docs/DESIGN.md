@@ -147,8 +147,9 @@ Also:
 - `/metrics` on `--listen` (Prometheus registry of its own, `pacer_*`), meant to
   be scraped by the agent that already scrapes the node.
 - Sentry when `SENTRY_DSN` is set: an `slog.Handler` wrapper forwards Warn and
-  Error records, throttled to one per event name per hour and fingerprinted by
-  event name; startup check failures and panics are reported before exit.
+  Error records, throttled to one per hour per key and fingerprinted by the same
+  key = event name + check id / retain kind (error text is excluded: it carries
+  heights); startup check failures and panics are reported before exit.
 
 ## Open questions
 

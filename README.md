@@ -245,7 +245,8 @@ alert on `pacer_step_stuck == 1` or `absent(pacer_latest_height)`.
 Set `SENTRY_DSN` to send warnings and errors: failed startup checks,
 `step_error`, `step_stuck`, `retain_set_failed`, `paused_low_memory`, startup
 warnings and panics. Normal progress (`step_set`, `step_done`) stays in the
-logs. Each event is reported at most once per hour and grouped by event name.
+logs. Each event is reported at most once per hour, grouped by event name plus
+the check id or retain kind (so `check_warn` C1, C5 and C7 are separate issues).
 
 With the systemd unit from step 4, put secrets in
 `/etc/cometbft-prune-pacer.env` (mode 600):

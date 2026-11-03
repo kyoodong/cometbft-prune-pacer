@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -66,9 +67,6 @@ func (h *sentryHandler) Handle(ctx context.Context, r slog.Record) error {
 	if r.Level < slog.LevelWarn {
 		return err
 	}
-	if !h.allow(r.Message) {
-		return err
-	}
 	fields := map[string]any{}
 	for _, a := range h.attrs {
 		fields[a.Key] = a.Value.Any()
@@ -77,6 +75,9 @@ func (h *sentryHandler) Handle(ctx context.Context, r slog.Record) error {
 		fields[a.Key] = a.Value.Any()
 		return true
 	})
+	if !h.allow(strings.Join(sentryKey(r.Message, fields), "|")) {
+		return err
+	}
 	level := sentry.LevelWarning
 	if r.Level >= slog.LevelError {
 		level = sentry.LevelError
@@ -117,10 +118,24 @@ func captureSentry(level sentry.Level, msg string, fields map[string]any) {
 			s.SetTag("check", id)
 		}
 		s.SetContext("fields", fields)
-		// Group by event name so a changing height does not split issues.
-		s.SetFingerprint([]string{msg})
+		s.SetFingerprint(sentryKey(msg, fields))
 		sentry.CaptureMessage(msg)
 	})
+}
+
+// sentryKey identifies an event for throttling and grouping: the event name
+// plus the check id or retain kind when present, so different checks that
+// share an event name (check_warn C1/C5/C7) are reported separately. Error
+// text is left out on purpose: it carries heights and would split every
+// report into its own issue.
+func sentryKey(msg string, fields map[string]any) []string {
+	k := []string{msg}
+	for _, f := range []string{"id", "retain"} {
+		if v, ok := fields[f].(string); ok {
+			k = append(k, v)
+		}
+	}
+	return k
 }
 
 // reportCheckFailure sends a fatal startup check to Sentry before exit.
