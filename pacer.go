@@ -115,6 +115,8 @@ func (p *Pacer) step(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	ceiling := latest - p.cfg.MinRetain
+	p.m.observeHeights(latest, ceiling)
 	if catching {
 		p.m.setPaused("catching_up")
 		p.log.Warn("paused_catching_up", "latest", latest)
@@ -128,8 +130,6 @@ func (p *Pacer) step(ctx context.Context) error {
 			return p.sleep(ctx, p.cfg.Poll)
 		}
 	}
-	ceiling := latest - p.cfg.MinRetain
-	p.m.observeHeights(latest, ceiling)
 	if ceiling <= 0 {
 		p.m.setPaused("ceiling")
 		p.log.Info("ceiling_reached", "latest", latest, "ceiling", ceiling)
