@@ -66,6 +66,7 @@ func (p *Pacer) Run(ctx context.Context) error {
 		}
 		if err != nil {
 			p.m.loopError()
+			p.m.setPaused("") // the reason is unknown until the next step gets through
 			p.log.Error("step_error", "err", err.Error())
 			if err := p.sleep(ctx, p.cfg.Poll); err != nil {
 				return nil
