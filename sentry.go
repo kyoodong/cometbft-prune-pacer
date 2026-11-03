@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"log/slog"
 	"os"
 	"strings"
@@ -31,7 +31,8 @@ func initSentry() (enabled bool, flush func(), err error) {
 		ServerName:  host,
 	})
 	if err != nil {
-		return false, func() {}, fmt.Errorf("sentry init: %w", err)
+		// The SDK error quotes the DSN, whose user part is the project key.
+		return false, func() {}, errors.New("sentry init: SENTRY_DSN is not a valid DSN")
 	}
 	return true, func() { sentry.Flush(5 * time.Second) }, nil
 }
