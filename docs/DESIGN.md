@@ -36,7 +36,7 @@ files or `grpcurl` are needed.
 
 | ID | Check | Failure |
 |---|---|---|
-| C1 | privileged gRPC reachable | exit, hint `[grpc.privileged] laddr` |
+| C1 | privileged gRPC reachable | exit 1 (retried by systemd), hint `[grpc.privileged] laddr` |
 | C2 | `PruningService` enabled (not `Unimplemented`) | exit, hint `pruning_service.enabled` |
 | C3 | `data_companion.enabled = true` (needs `--home`) | exit — `Pruner.OnStart` only starts `pruneIndexesRoutine` when it is set |
 | C4 | `indexer = "kv"` (needs `--home`) | exit |
@@ -44,6 +44,10 @@ files or `grpcurl` are needed.
 | C6 | existing indexer retain height ≤ lowest indexed height + `max-step` | exit — the node would prune the whole gap at once |
 | C7 | `min-retain-blocks > 0` (needs `--home`) | warn — block pruning is off otherwise |
 | C8 | `discard_abci_responses` | info — nothing to prune in block results when true |
+
+Every other failing check exits with code 3: it is a config error, and the
+systemd unit's `RestartPreventExitStatus=3` stops the restart loop instead of
+re-reporting it to Sentry every `RestartSec`.
 
 ## Loop
 

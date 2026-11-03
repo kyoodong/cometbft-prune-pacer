@@ -161,6 +161,8 @@ Environment=PACER_HOME=/path/to/node/home
 ExecStart=/usr/local/bin/cometbft-prune-pacer run
 Restart=on-failure
 RestartSec=60
+# Exit code 3 = config error; restarting will not fix it.
+RestartPreventExitStatus=3
 
 [Install]
 WantedBy=multi-user.target
@@ -186,8 +188,10 @@ journalctl -u cometbft-prune-pacer -f            # JSON lines: started, step_set
 curl -s 127.0.0.1:26670/metrics | grep '^pacer_' # own metrics
 ```
 
-A failed startup check makes the process exit with code 1; systemd retries
-every 60 s and the reason is in `journalctl`. Fix the node config, then
+If the node's privileged gRPC is not reachable yet (C1), the process exits
+with code 1 and systemd retries every 60 s. Any other failed startup check is
+a config error: the process exits with code 3 and systemd stops. The reason is
+in `journalctl`. Fix the node config, then
 `systemctl restart cometbft-prune-pacer`.
 
 ### 5. Watch the first steps
@@ -247,6 +251,8 @@ Set `SENTRY_DSN` to send warnings and errors: failed startup checks,
 warnings and panics. Normal progress (`step_set`, `step_done`) stays in the
 logs. Each event is reported at most once per hour, grouped by event name plus
 the check id or retain kind (so `check_warn` C1, C5 and C7 are separate issues).
+The hourly limit lives in memory, so every restart reports its startup events
+again; while C1 keeps failing that is one report per `RestartSec`.
 
 With the systemd unit from step 4, put secrets in
 `/etc/cometbft-prune-pacer.env` (mode 600):

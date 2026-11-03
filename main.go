@@ -42,6 +42,13 @@ func main() {
 		}
 		_, _ = fmt.Fprintln(os.Stderr, err)
 		_, _ = fmt.Fprintln(os.Stderr, usage)
+		// A config error needs the operator; exit 3 so the unit's
+		// RestartPreventExitStatus=3 stops the restart loop. C1 (node not
+		// reachable yet) exits 1 and is retried.
+		var cf *checkFailure
+		if errors.As(err, &cf) && cf.ID != "C1" {
+			os.Exit(3)
+		}
 		os.Exit(1)
 	}
 }
