@@ -41,7 +41,6 @@ func main() {
 			os.Exit(0)
 		}
 		_, _ = fmt.Fprintln(os.Stderr, err)
-		_, _ = fmt.Fprintln(os.Stderr, usage)
 		// A config error needs the operator; exit 3 so the unit's
 		// RestartPreventExitStatus=3 stops the restart loop. C1 (node not
 		// reachable yet) exits 1 and is retried.
@@ -56,7 +55,8 @@ func main() {
 func run(args []string) error {
 	cfg, err := parseConfig(args)
 	if err != nil {
-		return err
+		// Usage only helps with a bad command line, not with a failed check.
+		return fmt.Errorf("%w\n%s", err, usage)
 	}
 	sentryOn, flush, err := initSentry()
 	if err != nil {

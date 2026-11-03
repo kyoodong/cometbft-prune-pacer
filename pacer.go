@@ -54,6 +54,9 @@ type witness struct {
 // Run loops until ctx is cancelled.
 func (p *Pacer) Run(ctx context.Context) error {
 	if err := p.resume(ctx); err != nil {
+		if ctx.Err() != nil {
+			return nil
+		}
 		return err
 	}
 	for {
