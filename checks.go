@@ -38,10 +38,7 @@ type cometConfig struct {
 	} `toml:"storage"`
 	GRPC struct {
 		Privileged struct {
-			Laddr          string `toml:"laddr"`
-			PruningService struct {
-				Enabled bool `toml:"enabled"`
-			} `toml:"pruning_service"`
+			Laddr string `toml:"laddr"`
 		} `toml:"privileged"`
 	} `toml:"grpc"`
 }
