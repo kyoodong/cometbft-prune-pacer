@@ -220,15 +220,22 @@ func (p *Pacer) startHeight(ctx context.Context, latest int64) (int64, error) {
 	if p.start > 0 {
 		return p.start, nil
 	}
-	if p.cfg.StartHeight > 0 {
-		p.start = p.cfg.StartHeight
-		return p.start, nil
+	low := p.cfg.StartHeight
+	if low <= 0 {
+		var err error
+		if low, err = lowestIndexed(ctx, p.node, latest); err != nil {
+			return 0, err
+		}
 	}
-	low, err := lowestIndexed(ctx, p.node, latest)
-	if err != nil {
+	// The node prunes every tx below the target, not just [base, target), so a
+	// base above the real start of the tx index would make the first step huge.
+	// ponytail: only checks base-1; a gap that is empty exactly there slips through.
+	if hs, err := p.node.TxHashesAt(ctx, low-1); err != nil {
 		return 0, err
+	} else if len(hs) > 0 {
+		return 0, fmt.Errorf("tx index has txs at %d, below the first step base %d; pass a lower --start-height", low-1, low)
 	}
-	p.log.Info("start_height", "lowest_indexed", low)
+	p.log.Info("start_height", "base", low)
 	p.start = low
 	return low, nil
 }
