@@ -28,10 +28,11 @@ func TestF06RejectsNonPositiveDurations(t *testing.T) {
 			t.Errorf("%v accepted: poll=%v wait=%v step-timeout=%v", c, cfg.Poll, cfg.Wait, cfg.StepTimeout)
 		}
 	}
-	// Environment path: a bare "0" also parses, while "30" (no unit) falls back to the default.
-	t.Setenv("PACER_POLL", "30")
+	// Environment path: a bare "0" also parses; "30" (no unit) is rejected
+	// as malformed (see TestBadEnvValueFails).
+	t.Setenv("PACER_POLL", "30s")
 	if cfg, err := parseConfig(base); err != nil || cfg.Poll != 30*time.Second {
-		t.Fatalf("control PACER_POLL=30: poll=%v err=%v (want default 30s)", cfg.Poll, err)
+		t.Fatalf("control PACER_POLL=30s: poll=%v err=%v", cfg.Poll, err)
 	}
 	t.Setenv("PACER_POLL", "0")
 	if cfg, err := parseConfig(base); err == nil {

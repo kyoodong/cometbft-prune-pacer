@@ -169,7 +169,9 @@ WantedBy=multi-user.target
 ```
 
 Settings can be given as flags on `ExecStart` or as `PACER_*` variables; flags
-win when both are set.
+win when both are set. A malformed `PACER_*` value (for example `PACER_WAIT=10`
+without a unit) stops the daemon at startup instead of falling back to the
+default.
 
 `/etc/cometbft-prune-pacer.env` (optional, `chmod 600`):
 

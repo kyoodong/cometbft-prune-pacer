@@ -32,21 +32,25 @@ func parseConfig(args []string) (*Config, error) {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	c := &Config{}
 	var minMem string
-	fs.Int64Var(&c.MaxStep, "max-step", envInt("PACER_MAX_STEP", 0), "max blocks per pruning step (required, env PACER_MAX_STEP)")
-	fs.Int64Var(&c.MinRetain, "min-retain", envInt("PACER_MIN_RETAIN", 0), "blocks to always keep (required, env PACER_MIN_RETAIN)")
+	var bad []string // malformed PACER_* values; a typo must not silently become a default
+	fs.Int64Var(&c.MaxStep, "max-step", envInt("PACER_MAX_STEP", 0, &bad), "max blocks per pruning step (required, env PACER_MAX_STEP)")
+	fs.Int64Var(&c.MinRetain, "min-retain", envInt("PACER_MIN_RETAIN", 0, &bad), "blocks to always keep (required, env PACER_MIN_RETAIN)")
 	fs.StringVar(&c.GRPCAddr, "grpc-addr", envStr("PACER_GRPC_ADDR", "127.0.0.1:26659"), "privileged gRPC address")
 	fs.StringVar(&c.RPCAddr, "rpc-addr", envStr("PACER_RPC_ADDR", "http://127.0.0.1:26657"), "CometBFT RPC URL")
 	fs.StringVar(&c.MetricsAddr, "metrics-addr", envStr("PACER_METRICS_ADDR", "http://127.0.0.1:26660/metrics"), "Prometheus URL (informational)")
 	fs.StringVar(&c.Listen, "listen", envStr("PACER_LISTEN", "127.0.0.1:26670"), "serve this daemon's /metrics here (empty = off)")
 	fs.StringVar(&c.Home, "home", envStr("PACER_HOME", ""), "node home directory (enables config file checks)")
-	fs.DurationVar(&c.Wait, "wait", envDur("PACER_WAIT", 10*time.Minute), "sleep when the min-retain ceiling is reached")
-	fs.DurationVar(&c.Poll, "poll", envDur("PACER_POLL", 30*time.Second), "witness polling interval")
-	fs.DurationVar(&c.StepTimeout, "step-timeout", envDur("PACER_STEP_TIMEOUT", 2*time.Hour), "warn when a step takes longer than this")
+	fs.DurationVar(&c.Wait, "wait", envDur("PACER_WAIT", 10*time.Minute, &bad), "sleep when the min-retain ceiling is reached")
+	fs.DurationVar(&c.Poll, "poll", envDur("PACER_POLL", 30*time.Second, &bad), "witness polling interval")
+	fs.DurationVar(&c.StepTimeout, "step-timeout", envDur("PACER_STEP_TIMEOUT", 2*time.Hour, &bad), "warn when a step takes longer than this")
 	fs.StringVar(&minMem, "min-mem-avail", envStr("PACER_MIN_MEM_AVAIL", "30GiB"), "minimum MemAvailable to start a step; unit required: GiB, MiB or KiB (e.g. 30GiB)")
-	fs.Int64Var(&c.StartHeight, "start-height", envInt("PACER_START_HEIGHT", 0), "first step base height (0 = lowest indexed height)")
-	fs.BoolVar(&c.DryRun, "dry-run", envStr("PACER_DRY_RUN", "") == "true", "log decisions without calling Set")
+	fs.Int64Var(&c.StartHeight, "start-height", envInt("PACER_START_HEIGHT", 0, &bad), "first step base height (0 = lowest indexed height)")
+	fs.BoolVar(&c.DryRun, "dry-run", envBool("PACER_DRY_RUN", &bad), "log decisions without calling Set")
 	if err := fs.Parse(args); err != nil {
 		return nil, err
+	}
+	if len(bad) > 0 {
+		return nil, fmt.Errorf("invalid environment value: %s", strings.Join(bad, ", "))
 	}
 	b, err := parseBytes(minMem)
 	if err != nil {
@@ -73,22 +77,39 @@ func envStr(k, def string) string {
 	return def
 }
 
-func envInt(k string, def int64) int64 {
+func envInt(k string, def int64, bad *[]string) int64 {
 	if v, ok := os.LookupEnv(k); ok {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
-			return n
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			*bad = append(*bad, fmt.Sprintf("%s=%q", k, v))
+			return def
 		}
+		return n
 	}
 	return def
 }
 
-func envDur(k string, def time.Duration) time.Duration {
+func envDur(k string, def time.Duration, bad *[]string) time.Duration {
 	if v, ok := os.LookupEnv(k); ok {
-		if d, err := time.ParseDuration(v); err == nil {
-			return d
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			*bad = append(*bad, fmt.Sprintf("%s=%q", k, v))
+			return def
 		}
+		return d
 	}
 	return def
+}
+
+func envBool(k string, bad *[]string) bool {
+	if v, ok := os.LookupEnv(k); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			*bad = append(*bad, fmt.Sprintf("%s=%q", k, v))
+		}
+		return b
+	}
+	return false
 }
 
 // parseBytes accepts "30GiB", "512MiB" or "64KiB". The unit is required: a
