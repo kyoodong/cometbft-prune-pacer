@@ -40,11 +40,13 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	}
 }
 
-// witness is the last thing a step must delete. When it is gone, everything
-// below it in the same step is gone too, because Prune deletes in ascending
-// height order and flushes every 1000 entries. Within one height the order is
-// unspecified (sort.Sort by height only), so every tx at the witness height
-// must be gone, not just one.
+// witness is the last thing a step must delete. When the tx witness is gone,
+// every tx below it in the same step is gone too, because tx Prune deletes in
+// ascending height order and flushes every 1000 entries. Within one height the
+// order is unspecified (sort.Sort by height only), so every tx at the witness
+// height must be gone, not just one. The block witness is weaker: block Prune
+// walks keys in key order, so lower-height event keys may still remain; it
+// does not hold the range in memory, so that does not affect the step bound.
 type witness struct {
 	txHashes    []string // empty = no tx in the step range, nothing to wait for
 	blockHeight int64    // 0 = nothing to wait for

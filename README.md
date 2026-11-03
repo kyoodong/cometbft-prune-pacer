@@ -47,9 +47,12 @@ empty range looks the same as a stuck one, and it resets on node restart.
 | tx | all txs at the highest height in `[current, next)` that has txs (`tx_search "tx.height=H"`, a prefix seek) | none of them is found by `/tx?hash=` |
 | block | block-index entry at `next - 1` (`block_search "block.height=H"`, a key lookup) | `total_count` is 0 |
 
-`Prune` deletes in ascending height order and flushes every 1000 entries, so
-once the witnesses are gone everything below them is gone too. A range with no
-txs needs no tx witness.
+The tx index `Prune` deletes in ascending height order and flushes every 1000
+entries, so once the tx witness is gone every tx below it is gone too. That is
+the part that loads the range into memory. The block index `Prune` walks keys
+in key order, so its event keys for lower heights may still be in flight when
+the `block.height` witness is gone; it does not load the range into memory, so
+this does not affect the step size. A range with no txs needs no tx witness.
 
 ## Requirements
 
