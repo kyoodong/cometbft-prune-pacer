@@ -41,7 +41,7 @@ func newMetrics() *metrics {
 		reg:        prometheus.NewRegistry(),
 		latest:     g("latest_height", "Latest block height reported by the node."),
 		ceiling:    g("ceiling_height", "Highest allowed retain height: latest - min-retain."),
-		target:     g("target_height", "Indexer retain height most recently set."),
+		target:     g("target_height", "Indexer retain height: read from the node, or the one just set."),
 		backlog:    g("backlog_blocks", "Blocks between the indexer retain height and the ceiling."),
 		memAvail:   g("mem_available_bytes", "MemAvailable seen at the last step decision."),
 		inProgress: g("step_in_progress", "1 while waiting for a step's witnesses to disappear."),

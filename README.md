@@ -94,7 +94,7 @@ cometbft-prune-pacer run --max-step 10000 --min-retain 1430000 --home /path/to/n
 | `--step-timeout` | `PACER_STEP_TIMEOUT` | `2h` | warn (never skip) when a step is slow; must be > 0 |
 | `--min-mem-avail` | `PACER_MIN_MEM_AVAIL` | `30GiB` | do not start a step below this; unit required (`GiB`, `MiB`, `KiB`) |
 | `--start-height` | `PACER_START_HEIGHT` | auto | first step base; auto = lowest indexed height |
-| `--dry-run` | `PACER_DRY_RUN=true` | false | log decisions only |
+| `--dry-run` | `PACER_DRY_RUN=true` | false | log decisions only; no step starts, so `pacer_step_*` and `pacer_steps_total` stay at 0 |
 | `--listen` | `PACER_LISTEN` | `127.0.0.1:26670` | serve this daemon's `/metrics`; empty disables |
 | | `SENTRY_DSN` | | enables Sentry |
 | | `SENTRY_ENVIRONMENT` | | Sentry environment tag |
@@ -234,7 +234,7 @@ prometheus.scrape "prune_pacer" {
 |---|---|---|
 | `pacer_latest_height` | gauge | latest block height |
 | `pacer_ceiling_height` | gauge | `latest - min-retain` |
-| `pacer_target_height` | gauge | indexer retain height last set |
+| `pacer_target_height` | gauge | indexer retain height (read from the node, or the one just set) |
 | `pacer_backlog_blocks` | gauge | blocks still to prune (`ceiling - target`) |
 | `pacer_step_in_progress` | gauge | 1 while waiting for witnesses |
 | `pacer_step_stuck` | gauge | 1 after `--step-timeout` |
