@@ -57,6 +57,8 @@ After=network-online.target
 
 [Service]
 User=%s
+# Optional secrets such as SENTRY_DSN; the leading "-" makes the file optional.
+EnvironmentFile=-/etc/cometbft-prune-pacer.env
 ExecStart=%s run %s
 Restart=on-failure
 RestartSec=60
@@ -82,14 +84,14 @@ func copyFile(src, dst string, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	tmp := dst + ".tmp"
 	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		return err
 	}
 	if err := out.Close(); err != nil {

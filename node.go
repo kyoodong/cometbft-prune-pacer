@@ -85,7 +85,7 @@ func (n *liveNode) getJSON(ctx context.Context, path string, q url.Values, out a
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return err
@@ -220,7 +220,7 @@ func (n *liveNode) MemAvailable() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	for sc.Scan() {
 		fields := strings.Fields(sc.Text())
@@ -242,7 +242,7 @@ func (n *liveNode) Metric(ctx context.Context, name string) (int64, bool) {
 	if err != nil {
 		return 0, false
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	sc := bufio.NewScanner(resp.Body)
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
 	prefix := "cometbft_state_" + name + "{"

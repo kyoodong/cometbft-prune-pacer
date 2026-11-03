@@ -41,7 +41,7 @@ func TestLiveNodeGRPCRoundTrip(t *testing.T) {
 	}
 	srv := grpc.NewServer()
 	pruningv1.RegisterPruningServiceServer(srv, &fakePruning{})
-	go srv.Serve(lis)
+	go func() { _ = srv.Serve(lis) }()
 	defer srv.Stop()
 
 	n, err := dialNode(&Config{GRPCAddr: lis.Addr().String()})
@@ -68,16 +68,16 @@ func TestLiveNodeRPC(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/status":
-			w.Write([]byte(`{"result":{"sync_info":{"latest_block_height":"190000000","earliest_block_height":"176946601","catching_up":false}}}`))
+			_, _ = w.Write([]byte(`{"result":{"sync_info":{"latest_block_height":"190000000","earliest_block_height":"176946601","catching_up":false}}}`))
 		case "/tx_search":
 			if r.URL.Query().Get("query") != `"tx.height=100"` {
 				t.Errorf("query %q", r.URL.Query().Get("query"))
 			}
-			w.Write([]byte(`{"result":{"txs":[{"hash":"AA"},{"hash":"BB"}],"total_count":"2"}}`))
+			_, _ = w.Write([]byte(`{"result":{"txs":[{"hash":"AA"},{"hash":"BB"}],"total_count":"2"}}`))
 		case "/tx":
-			w.Write([]byte(`{"error":{"code":-32603,"message":"Internal error","data":"tx (BB) not found"}}`))
+			_, _ = w.Write([]byte(`{"error":{"code":-32603,"message":"Internal error","data":"tx (BB) not found"}}`))
 		case "/block_search":
-			w.Write([]byte(`{"result":{"blocks":[],"total_count":"0"}}`))
+			_, _ = w.Write([]byte(`{"result":{"blocks":[],"total_count":"0"}}`))
 		}
 	}))
 	defer ts.Close()

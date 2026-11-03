@@ -11,6 +11,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/getsentry/sentry-go"
 )
 
 var version = "dev"
@@ -41,8 +43,8 @@ func main() {
 		if errors.Is(err, flag.ErrHelp) {
 			os.Exit(0)
 		}
-		fmt.Fprintln(os.Stderr, err)
-		fmt.Fprintln(os.Stderr, usage)
+		_, _ = fmt.Fprintln(os.Stderr, err)
+		_, _ = fmt.Fprintln(os.Stderr, usage)
 		os.Exit(1)
 	}
 }
@@ -52,7 +54,23 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	sentryOn, flush, err := initSentry()
+	if err != nil {
+		return err
+	}
+	defer flush()
+	var handler slog.Handler = slog.NewJSONHandler(os.Stdout, nil)
+	if sentryOn {
+		handler = newSentryHandler(handler)
+		defer func() {
+			if r := recover(); r != nil {
+				sentry.CurrentHub().Recover(r)
+				flush()
+				panic(r)
+			}
+		}()
+	}
+	log := slog.New(handler)
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
@@ -60,11 +78,21 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer n.conn.Close()
+	defer func() { _ = n.conn.Close() }()
 
 	if err := preflight(ctx, cfg, n, log); err != nil {
+		var cf *checkFailure
+		if sentryOn && errors.As(err, &cf) {
+			reportCheckFailure(cf)
+		}
 		return err
 	}
-	log.Info("started", "version", version, "max_step", cfg.MaxStep, "min_retain", cfg.MinRetain, "dry_run", cfg.DryRun)
-	return NewPacer(cfg, n, log).Run(ctx)
+	p := NewPacer(cfg, n, log)
+	if cfg.Listen != "" {
+		p.m = newMetrics()
+		p.m.serve(ctx, cfg.Listen, log)
+	}
+	log.Info("started", "version", version, "max_step", cfg.MaxStep, "min_retain", cfg.MinRetain,
+		"dry_run", cfg.DryRun, "metrics", cfg.Listen, "sentry", sentryOn)
+	return p.Run(ctx)
 }

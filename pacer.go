@@ -19,6 +19,7 @@ type Pacer struct {
 	cfg   *Config
 	node  Node
 	log   *slog.Logger
+	m     *metrics // nil = metrics off
 	sleep func(ctx context.Context, d time.Duration) error
 	now   func() time.Time
 
@@ -61,6 +62,7 @@ func (p *Pacer) Run(ctx context.Context) error {
 			return nil
 		}
 		if err != nil {
+			p.m.loopError()
 			p.log.Error("step_error", "err", err.Error())
 			if err := p.sleep(ctx, p.cfg.Poll); err != nil {
 				return nil
@@ -111,15 +113,22 @@ func (p *Pacer) step(ctx context.Context) error {
 		return err
 	}
 	if catching {
-		p.log.Info("paused_catching_up", "latest", latest)
+		p.m.setPaused("catching_up")
+		p.log.Warn("paused_catching_up", "latest", latest)
 		return p.sleep(ctx, p.cfg.Poll)
 	}
-	if avail, err := p.node.MemAvailable(); err == nil && avail < p.cfg.MinMemAvail {
-		p.log.Warn("paused_low_memory", "mem_avail_gib", avail>>30)
-		return p.sleep(ctx, p.cfg.Poll)
+	if avail, err := p.node.MemAvailable(); err == nil {
+		p.m.setMemAvail(avail)
+		if avail < p.cfg.MinMemAvail {
+			p.m.setPaused("low_memory")
+			p.log.Warn("paused_low_memory", "mem_avail_gib", avail>>30)
+			return p.sleep(ctx, p.cfg.Poll)
+		}
 	}
 	ceiling := latest - p.cfg.MinRetain
+	p.m.observeHeights(latest, ceiling)
 	if ceiling <= 0 {
+		p.m.setPaused("ceiling")
 		p.log.Info("ceiling_reached", "latest", latest, "ceiling", ceiling)
 		return p.sleep(ctx, p.cfg.Wait)
 	}
@@ -135,12 +144,15 @@ func (p *Pacer) step(ctx context.Context) error {
 			return err
 		}
 	}
+	p.m.observeTarget(cur, ceiling)
 	next := min(cur+p.cfg.MaxStep, ceiling)
 	if next <= cur {
+		p.m.setPaused("ceiling")
 		p.log.Info("ceiling_reached", "latest", latest, "ceiling", ceiling, "target", cur)
 		return p.sleep(ctx, p.cfg.Wait)
 	}
 
+	p.m.setPaused("")
 	w, err := p.pickWitness(ctx, cur, next)
 	if err != nil {
 		return err
@@ -155,6 +167,7 @@ func (p *Pacer) step(ctx context.Context) error {
 			return err
 		}
 	}
+	p.m.observeTarget(next, ceiling)
 	return p.waitGone(ctx, w, next)
 }
 
@@ -217,7 +230,7 @@ func lowestIndexed(ctx context.Context, n Node, latest int64) (int64, error) {
 		return 0, err
 	}
 	if !ok {
-		return 0, errors.New("block index is empty; is [tx_index] indexer = \"kv\"?")
+		return 0, errors.New("block index is empty; is [tx_index] indexer = \"kv\"")
 	}
 	lo, hi := int64(1), latest-1
 	for lo < hi {
@@ -265,6 +278,7 @@ func (p *Pacer) pickWitness(ctx context.Context, from, to int64) (witness, error
 func (p *Pacer) waitGone(ctx context.Context, w witness, target int64) error {
 	began := p.now()
 	warned := false
+	p.m.stepStarted()
 	for {
 		txLeft, blkLeft := false, false
 		var err error
@@ -284,6 +298,7 @@ func (p *Pacer) waitGone(ctx context.Context, w witness, target int64) error {
 		if !txLeft && !blkLeft {
 			txBase, _ := p.node.Metric(ctx, "tx_indexer_base_height")
 			blkBase, _ := p.node.Metric(ctx, "block_indexer_base_height")
+			p.m.stepDone(p.now().Sub(began), len(w.txHashes) == 0)
 			p.log.Info("step_done", "target", target, "seconds", int(p.now().Sub(began).Seconds()),
 				"tx_base", txBase, "block_base", blkBase)
 			return nil
@@ -292,6 +307,7 @@ func (p *Pacer) waitGone(ctx context.Context, w witness, target int64) error {
 			p.log.Warn("step_stuck", "target", target, "tx_left", txLeft, "block_left", blkLeft,
 				"waiting_seconds", int(p.now().Sub(began).Seconds()))
 			warned = true
+			p.m.stepStuck()
 		}
 		if err := p.sleep(ctx, p.cfg.Poll); err != nil {
 			return err

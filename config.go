@@ -16,7 +16,8 @@ type Config struct {
 	MinRetain   int64         // blocks that must always be kept (required)
 	GRPCAddr    string        // privileged gRPC address ([grpc.privileged] laddr)
 	RPCAddr     string        // CometBFT RPC base URL
-	MetricsAddr string        // Prometheus endpoint, informational only
+	MetricsAddr string        // node Prometheus endpoint, informational only
+	Listen      string        // where this daemon serves its own /metrics; "" = off
 	Home        string        // node home; enables config.toml / app.toml checks
 	Wait        time.Duration // sleep when the min-retain ceiling is reached
 	Poll        time.Duration // witness polling interval
@@ -35,6 +36,7 @@ func parseConfig(args []string) (*Config, error) {
 	fs.StringVar(&c.GRPCAddr, "grpc-addr", envStr("PACER_GRPC_ADDR", "127.0.0.1:26659"), "privileged gRPC address")
 	fs.StringVar(&c.RPCAddr, "rpc-addr", envStr("PACER_RPC_ADDR", "http://127.0.0.1:26657"), "CometBFT RPC URL")
 	fs.StringVar(&c.MetricsAddr, "metrics-addr", envStr("PACER_METRICS_ADDR", "http://127.0.0.1:26660/metrics"), "Prometheus URL (informational)")
+	fs.StringVar(&c.Listen, "listen", envStr("PACER_LISTEN", "127.0.0.1:26670"), "serve this daemon's /metrics here (empty = off)")
 	fs.StringVar(&c.Home, "home", envStr("PACER_HOME", ""), "node home directory (enables config file checks)")
 	fs.DurationVar(&c.Wait, "wait", envDur("PACER_WAIT", 10*time.Minute), "sleep when the min-retain ceiling is reached")
 	fs.DurationVar(&c.Poll, "poll", envDur("PACER_POLL", 30*time.Second), "witness polling interval")

@@ -92,6 +92,9 @@ cometbft-prune-pacer run --max-step 10000 --min-retain 1430000 --home /path/to/n
 | `--min-mem-avail` | `PACER_MIN_MEM_AVAIL` | `30GiB` | do not start a step below this |
 | `--start-height` | `PACER_START_HEIGHT` | auto | first step base; auto = lowest indexed height |
 | `--dry-run` | `PACER_DRY_RUN=true` | false | log decisions only |
+| `--listen` | `PACER_LISTEN` | `127.0.0.1:26670` | serve this daemon's `/metrics`; empty disables |
+| | `SENTRY_DSN` | | enables Sentry |
+| | `SENTRY_ENVIRONMENT` | | Sentry environment tag |
 
 ## Installation
 
@@ -161,6 +164,55 @@ systemctl daemon-reload
 ```
 
 Retain heights already set stay on the node and cannot be lowered.
+
+## Observability
+
+### Metrics (Grafana)
+
+The daemon serves Prometheus metrics on `--listen` (default
+`127.0.0.1:26670/metrics`). Point the scraper that already collects the node's
+metrics at it, e.g. Grafana Alloy:
+
+```alloy
+prometheus.scrape "prune_pacer" {
+  targets    = [{"__address__" = "127.0.0.1:26670"}]
+  forward_to = [prometheus.remote_write.default.receiver]
+}
+```
+
+| Metric | Type | Meaning |
+|---|---|---|
+| `pacer_latest_height` | gauge | latest block height |
+| `pacer_ceiling_height` | gauge | `latest - min-retain` |
+| `pacer_target_height` | gauge | indexer retain height last set |
+| `pacer_backlog_blocks` | gauge | blocks still to prune (`ceiling - target`) |
+| `pacer_step_in_progress` | gauge | 1 while waiting for witnesses |
+| `pacer_step_stuck` | gauge | 1 after `--step-timeout` |
+| `pacer_paused{reason}` | gauge | `catching_up`, `low_memory`, `ceiling` |
+| `pacer_mem_available_bytes` | gauge | MemAvailable at the last decision |
+| `pacer_steps_total` | counter | completed steps |
+| `pacer_empty_steps_total` | counter | steps whose range had no txs |
+| `pacer_errors_total` | counter | loop iterations that failed |
+| `pacer_step_duration_seconds` | histogram | Set until witnesses gone |
+
+Useful queries: catch-up ETA ≈
+`pacer_backlog_blocks / (rate(pacer_target_height[1h]) * 3600)` hours;
+alert on `pacer_step_stuck == 1` or `absent(pacer_latest_height)`.
+
+### Sentry
+
+Set `SENTRY_DSN` to send warnings and errors: failed startup checks,
+`step_error`, `step_stuck`, `retain_set_failed`, `paused_low_memory`, startup
+warnings and panics. Normal progress (`step_set`, `step_done`) stays in the
+logs. Each event is reported at most once per hour and grouped by event name.
+
+With the systemd unit from `install`, put secrets in
+`/etc/cometbft-prune-pacer.env` (mode 600):
+
+```sh
+SENTRY_DSN=https://<key>@<org>.ingest.sentry.io/<project>
+SENTRY_ENVIRONMENT=production
+```
 
 ## Startup checks
 

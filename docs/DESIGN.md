@@ -142,6 +142,14 @@ Also:
 - `index-events` changes what is indexed (size), not pruning.
 - `pruning` / `pruning-keep-recent` (app state) are unrelated.
 
+## Observability
+
+- `/metrics` on `--listen` (Prometheus registry of its own, `pacer_*`), meant to
+  be scraped by the agent that already scrapes the node.
+- Sentry when `SENTRY_DSN` is set: an `slog.Handler` wrapper forwards Warn and
+  Error records, throttled to one per event name per hour and fingerprinted by
+  event name; startup check failures and panics are reported before exit.
+
 ## Open questions
 
 - Memory and duration of one 10,000-block step on a large index.
