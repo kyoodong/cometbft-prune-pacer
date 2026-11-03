@@ -69,7 +69,10 @@ func newMetrics() *metrics {
 func (m *metrics) serve(ctx context.Context, addr string, log *slog.Logger) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.HandlerFor(m.reg, promhttp.HandlerOpts{}))
-	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	if !localLaddr(addr) {
+		log.Warn("metrics_listen_not_loopback", "addr", addr, "msg", "/metrics has no authentication")
+	}
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second, IdleTimeout: 2 * time.Minute}
 	go func() {
 		<-ctx.Done()
 		_ = srv.Close()
