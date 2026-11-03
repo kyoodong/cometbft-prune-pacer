@@ -100,21 +100,23 @@ cometbft-prune-pacer run --max-step 10000 --min-retain 1430000 --home /path/to/n
 
 ### 1. Get the binary
 
-Build on any machine with Go 1.23+ and copy it to the node (static binary, no
-runtime dependencies):
+On the node, if it has Go 1.23+:
 
 ```sh
 git clone https://github.com/kyoodong/cometbft-prune-pacer.git
 cd cometbft-prune-pacer
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -o bin/cometbft-prune-pacer .
-scp bin/cometbft-prune-pacer root@<node>:/tmp/
+make install            # builds and copies to /usr/local/bin (PREFIX=... to change)
 ```
 
-Or build directly on the node:
+Or build elsewhere and copy the static binary over:
 
 ```sh
-go install github.com/kyoodong/cometbft-prune-pacer@latest   # -> $(go env GOPATH)/bin
+make build-linux        # -> bin/cometbft-prune-pacer-linux-amd64
+scp bin/cometbft-prune-pacer-linux-amd64 root@<node>:/usr/local/bin/cometbft-prune-pacer
 ```
+
+Other targets: `make build` (this machine), `make test`, `make clean`. The
+version printed by `cometbft-prune-pacer version` comes from `git describe`.
 
 ### 2. Prepare the node
 
@@ -130,7 +132,7 @@ go install github.com/kyoodong/cometbft-prune-pacer@latest   # -> $(go env GOPAT
 Runs every startup check and logs the first step without calling Set:
 
 ```sh
-/tmp/cometbft-prune-pacer run --dry-run --max-step 10000 --min-retain 1430000 --home /path/to/node/home
+cometbft-prune-pacer run --dry-run --max-step 10000 --min-retain 1430000 --home /path/to/node/home
 ```
 
 Expect a `started` line followed by `start_height` and `step_set` with
@@ -138,16 +140,55 @@ Expect a `started` line followed by `start_height` and `step_set` with
 
 ### 4. Install the service (as root)
 
-```sh
-/tmp/cometbft-prune-pacer install --user <node-user> --max-step 10000 --min-retain 1430000 --home /path/to/node/home
-systemctl enable --now cometbft-prune-pacer
-journalctl -u cometbft-prune-pacer -f
+`/etc/systemd/system/cometbft-prune-pacer.service`:
+
+```ini
+[Unit]
+Description=CometBFT prune pacer
+# Start after the node; the startup checks fail while its gRPC/RPC are down,
+# and Restart= retries until they are up.
+After=network-online.target injectived.service
+Wants=network-online.target
+
+[Service]
+# Same user as the node, so it can read <home>/config/*.toml.
+User=injective
+# Optional secrets (SENTRY_DSN, SENTRY_ENVIRONMENT). "-" = file may be absent.
+EnvironmentFile=-/etc/cometbft-prune-pacer.env
+Environment=PACER_MAX_STEP=10000
+Environment=PACER_MIN_RETAIN=1430000
+Environment=PACER_HOME=/path/to/node/home
+ExecStart=/usr/local/bin/cometbft-prune-pacer run
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
 ```
 
-`install` copies the binary to `/usr/local/bin/cometbft-prune-pacer`, writes
-`/etc/systemd/system/cometbft-prune-pacer.service` (runs as `--user`, restarts
-on failure) and runs `systemctl daemon-reload`. All other flags are passed to
-`run` unchanged and validated first.
+Settings can be given as flags on `ExecStart` or as `PACER_*` variables; flags
+win when both are set.
+
+`/etc/cometbft-prune-pacer.env` (optional, `chmod 600`):
+
+```sh
+SENTRY_DSN=https://<key>@<org>.ingest.sentry.io/<project>
+SENTRY_ENVIRONMENT=production
+```
+
+Enable and check:
+
+```sh
+systemctl daemon-reload
+systemctl enable --now cometbft-prune-pacer
+systemctl status cometbft-prune-pacer
+journalctl -u cometbft-prune-pacer -f            # JSON lines: started, step_set, step_done ...
+curl -s 127.0.0.1:26670/metrics | grep '^pacer_' # own metrics
+```
+
+A failed startup check makes the process exit with code 1; systemd retries
+every 60 s and the reason is in `journalctl`. Fix the node config, then
+`systemctl restart cometbft-prune-pacer`.
 
 ### 5. Watch the first steps
 
@@ -206,7 +247,7 @@ Set `SENTRY_DSN` to send warnings and errors: failed startup checks,
 warnings and panics. Normal progress (`step_set`, `step_done`) stays in the
 logs. Each event is reported at most once per hour and grouped by event name.
 
-With the systemd unit from `install`, put secrets in
+With the systemd unit from step 4, put secrets in
 `/etc/cometbft-prune-pacer.env` (mode 600):
 
 ```sh
@@ -239,8 +280,8 @@ shorter; with `min-retain-blocks = 0` block pruning is off entirely.
 ## Build
 
 ```sh
-go test ./...
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o bin/cometbft-prune-pacer-linux-amd64 .
+make test
+make build-linux        # -> bin/cometbft-prune-pacer-linux-amd64
 ```
 
 Written against CometBFT v1.0.1 sources (and a fork whose pruning files are

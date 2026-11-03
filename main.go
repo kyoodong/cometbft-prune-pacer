@@ -19,7 +19,6 @@ var version = "dev"
 
 const usage = `usage:
   cometbft-prune-pacer [run] --max-step N --min-retain N [options]
-  cometbft-prune-pacer install --user USER [run options]
   cometbft-prune-pacer version
 
 run "cometbft-prune-pacer run -h" for all options`
@@ -27,15 +26,13 @@ run "cometbft-prune-pacer run -h" for all options`
 func main() {
 	args := os.Args[1:]
 	cmd := "run"
-	if len(args) > 0 && (args[0] == "run" || args[0] == "install" || args[0] == "version") {
+	if len(args) > 0 && (args[0] == "run" || args[0] == "version") {
 		cmd, args = args[0], args[1:]
 	}
 	var err error
 	switch cmd {
 	case "version":
 		fmt.Println(version)
-	case "install":
-		err = install(args)
 	default:
 		err = run(args)
 	}
