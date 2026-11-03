@@ -40,7 +40,8 @@ func initSentry() (enabled bool, flush func(), err error) {
 // the logs only.
 type sentryHandler struct {
 	next  slog.Handler
-	attrs []slog.Attr
+	attrs []slog.Attr // keys already carry their group prefix
+	group string      // "a.b." after WithGroup("a").WithGroup("b")
 	mu    *sync.Mutex
 	last  map[string]time.Time
 	now   func() time.Time
@@ -68,10 +69,10 @@ func (h *sentryHandler) Handle(ctx context.Context, r slog.Record) error {
 	}
 	fields := map[string]any{}
 	for _, a := range h.attrs {
-		fields[a.Key] = a.Value.Any()
+		fields[a.Key] = sentryValue(a.Value)
 	}
 	r.Attrs(func(a slog.Attr) bool {
-		fields[a.Key] = a.Value.Any()
+		fields[h.group+a.Key] = sentryValue(a.Value)
 		return true
 	})
 	if !h.allow(strings.Join(sentryKey(r.Message, fields), "|")) {
@@ -99,14 +100,31 @@ func (h *sentryHandler) allow(event string) bool {
 func (h *sentryHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	c := *h
 	c.next = h.next.WithAttrs(attrs)
-	c.attrs = append(append([]slog.Attr{}, h.attrs...), attrs...)
+	c.attrs = append([]slog.Attr{}, h.attrs...)
+	for _, a := range attrs {
+		c.attrs = append(c.attrs, slog.Attr{Key: h.group + a.Key, Value: a.Value})
+	}
 	return &c
 }
 
 func (h *sentryHandler) WithGroup(name string) slog.Handler {
+	if name == "" {
+		return h
+	}
 	c := *h
 	c.next = h.next.WithGroup(name)
+	c.group = h.group + name + "."
 	return &c
+}
+
+// sentryValue makes a log value readable in the Sentry event: an error is
+// sent as its text, since its JSON form is usually {}.
+func sentryValue(v slog.Value) any {
+	v = v.Resolve()
+	if e, ok := v.Any().(error); ok {
+		return e.Error()
+	}
+	return v.Any()
 }
 
 func captureSentry(level sentry.Level, msg string, fields map[string]any) {
