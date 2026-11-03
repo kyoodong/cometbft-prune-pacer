@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -254,17 +253,26 @@ func (p *Pacer) startHeight(ctx context.Context, latest int64) (int64, error) {
 
 // lowestIndexed binary-searches the lowest height with a block-index entry.
 // The block indexer writes a height key for every block, so indexed heights
-// form one contiguous range ending at latest. The tx index starts at the same
+// form one contiguous range ending near latest. The tx index starts at the same
 // height (both are written for the same blocks).
 func lowestIndexed(ctx context.Context, n Node, latest int64) (int64, error) {
-	ok, err := n.BlockIndexed(ctx, latest-1)
-	if err != nil {
-		return 0, err
+	// The indexer runs behind the block store, so look a little further back
+	// for an indexed height to search below.
+	hi := int64(0)
+	for _, back := range []int64{1, 10, 100, 1000} {
+		ok, err := n.BlockIndexed(ctx, latest-back)
+		if err != nil {
+			return 0, err
+		}
+		if ok {
+			hi = latest - back
+			break
+		}
 	}
-	if !ok {
-		return 0, errors.New("block index is empty; is [tx_index] indexer = \"kv\"")
+	if hi <= 0 {
+		return 0, fmt.Errorf("no block index entry in the last 1000 heights below %d: indexer far behind, or [tx_index] indexer is not \"kv\"", latest)
 	}
-	lo, hi := int64(1), latest-1
+	lo := int64(1)
 	for lo < hi {
 		mid := lo + (hi-lo)/2
 		ok, err := n.BlockIndexed(ctx, mid)
