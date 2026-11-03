@@ -53,7 +53,9 @@ func newMetrics() *metrics {
 		errors:     c("errors_total", "Loop iterations that ended in an error."),
 		stepSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "pacer", Name: "step_duration_seconds",
 			Help:    "Time from Set until the step's witnesses were gone.",
-			Buckets: []float64{10, 30, 60, 120, 300, 600, 1200, 1800, 3600, 7200}}),
+			// From the default --poll (30s; nothing is observed sooner) to a day,
+			// so steps beyond the default --step-timeout (2h) are not all +Inf.
+			Buckets: []float64{30, 60, 120, 300, 600, 1200, 1800, 3600, 7200, 14400, 28800, 86400}}),
 	}
 	m.reg.MustRegister(m.latest, m.ceiling, m.target, m.backlog, m.memAvail, m.inProgress, m.stuck,
 		m.paused, m.steps, m.emptySteps, m.errors, m.stepSeconds)
