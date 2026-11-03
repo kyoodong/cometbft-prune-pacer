@@ -1,0 +1,10 @@
+# Korean-only working docs (not published)
+docs-ko/
+
+# build output
+/bin/
+/dist/
+*.test
+
+# IDE
+.idea/
