@@ -86,9 +86,9 @@ cometbft-prune-pacer run --max-step 10000 --min-retain 1430000 --home /path/to/n
 | `--rpc-addr` | `PACER_RPC_ADDR` | `http://127.0.0.1:26657` | CometBFT RPC |
 | `--metrics-addr` | `PACER_METRICS_ADDR` | `http://127.0.0.1:26660/metrics` | informational only |
 | `--home` | `PACER_HOME` | | enables config file checks |
-| `--wait` | `PACER_WAIT` | `10m` | sleep when the ceiling is reached |
-| `--poll` | `PACER_POLL` | `30s` | witness polling interval |
-| `--step-timeout` | `PACER_STEP_TIMEOUT` | `2h` | warn (never skip) when a step is slow |
+| `--wait` | `PACER_WAIT` | `10m` | sleep when the ceiling is reached; must be > 0 |
+| `--poll` | `PACER_POLL` | `30s` | witness polling interval; must be > 0 |
+| `--step-timeout` | `PACER_STEP_TIMEOUT` | `2h` | warn (never skip) when a step is slow; must be > 0 |
 | `--min-mem-avail` | `PACER_MIN_MEM_AVAIL` | `30GiB` | do not start a step below this; unit required (`GiB`, `MiB`, `KiB`) |
 | `--start-height` | `PACER_START_HEIGHT` | auto | first step base; auto = lowest indexed height |
 | `--dry-run` | `PACER_DRY_RUN=true` | false | log decisions only |

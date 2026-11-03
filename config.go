@@ -59,6 +59,9 @@ func parseConfig(args []string) (*Config, error) {
 	if c.MinRetain <= 0 {
 		return nil, errors.New("--min-retain (or PACER_MIN_RETAIN) is required and must be > 0")
 	}
+	if c.Poll <= 0 || c.Wait <= 0 || c.StepTimeout <= 0 {
+		return nil, errors.New("--poll, --wait and --step-timeout must be > 0")
+	}
 	c.RPCAddr = strings.TrimRight(c.RPCAddr, "/")
 	return c, nil
 }
