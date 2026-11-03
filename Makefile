@@ -1,5 +1,9 @@
 BINARY  := cometbft-prune-pacer
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
+ifeq ($(VERSION),)
+$(warning git describe failed (not a git checkout, or "dubious ownership" when building another user's clone as root): version is "dev")
+VERSION := dev
+endif
 PREFIX  ?= /usr/local
 GOOS    ?= linux
 GOARCH  ?= amd64
