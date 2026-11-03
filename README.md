@@ -241,7 +241,9 @@ prometheus.scrape "prune_pacer" {
 | `pacer_step_duration_seconds` | histogram | Set until witnesses gone |
 
 Useful queries: catch-up ETA ≈
-`pacer_backlog_blocks / (rate(pacer_target_height[1h]) * 3600)` hours;
+`pacer_backlog_blocks / (deriv((pacer_target_height > 0)[1h:1m]) * 3600)` hours
+(the target gauge reads 0 after a restart until the first step; `> 0` drops
+those samples, which `rate()` would count as a counter reset);
 alert on `pacer_step_stuck == 1` or `absent(pacer_latest_height)`.
 
 ### Sentry
