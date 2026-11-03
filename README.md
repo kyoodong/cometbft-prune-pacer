@@ -89,7 +89,7 @@ cometbft-prune-pacer run --max-step 10000 --min-retain 1430000 --home /path/to/n
 | `--wait` | `PACER_WAIT` | `10m` | sleep when the ceiling is reached |
 | `--poll` | `PACER_POLL` | `30s` | witness polling interval |
 | `--step-timeout` | `PACER_STEP_TIMEOUT` | `2h` | warn (never skip) when a step is slow |
-| `--min-mem-avail` | `PACER_MIN_MEM_AVAIL` | `30GiB` | do not start a step below this |
+| `--min-mem-avail` | `PACER_MIN_MEM_AVAIL` | `30GiB` | do not start a step below this; unit required (`GiB`, `MiB`, `KiB`) |
 | `--start-height` | `PACER_START_HEIGHT` | auto | first step base; auto = lowest indexed height |
 | `--dry-run` | `PACER_DRY_RUN=true` | false | log decisions only |
 | `--listen` | `PACER_LISTEN` | `127.0.0.1:26670` | serve this daemon's `/metrics`; empty disables |

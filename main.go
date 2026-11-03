@@ -90,6 +90,7 @@ func run(args []string) error {
 		p.m.serve(ctx, cfg.Listen, log)
 	}
 	log.Info("started", "version", version, "max_step", cfg.MaxStep, "min_retain", cfg.MinRetain,
+		"min_mem_avail_mib", cfg.MinMemAvail>>20,
 		"dry_run", cfg.DryRun, "metrics", cfg.Listen, "sentry", sentryOn)
 	return p.Run(ctx)
 }
