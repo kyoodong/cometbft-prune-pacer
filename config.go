@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"strconv"
@@ -46,8 +47,17 @@ func parseConfig(args []string) (*Config, error) {
 	fs.StringVar(&minMem, "min-mem-avail", envStr("PACER_MIN_MEM_AVAIL", "30GiB"), "minimum MemAvailable to start a step; unit required: GiB, MiB or KiB (e.g. 30GiB)")
 	fs.Int64Var(&c.StartHeight, "start-height", envInt("PACER_START_HEIGHT", 0, &bad), "first step base height (0 = lowest indexed height)")
 	fs.BoolVar(&c.DryRun, "dry-run", envBool("PACER_DRY_RUN", &bad), "log decisions without calling Set")
+	// Errors are printed once by main; only -h prints the option list.
+	fs.SetOutput(io.Discard)
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			fs.SetOutput(os.Stderr)
+			fs.PrintDefaults()
+		}
 		return nil, err
+	}
+	if fs.NArg() > 0 {
+		return nil, fmt.Errorf("unexpected argument %q", fs.Arg(0))
 	}
 	if len(bad) > 0 {
 		return nil, fmt.Errorf("invalid environment value: %s", strings.Join(bad, ", "))
