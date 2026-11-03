@@ -168,18 +168,20 @@ func TestVerifyF10CheckFailedAcrossRestarts(t *testing.T) {
 
 	ing.mu.Lock()
 	defer ing.mu.Unlock()
-	count := map[string]int{}
+	count := map[string]int{} // per fingerprint: different checks are different issues
 	for _, e := range ing.events {
-		count[e.Message]++
+		count[strings.Join(e.Fingerprint, " ")]++
 		t.Logf("sentry event: %s fingerprint=%v check=%s", e.Message, e.Fingerprint, e.Tags["check"])
 	}
 	t.Logf("exit codes %v, RestartPreventExitStatus=%v -> sentry events %v", codes, prevent, count)
-	if count["check_failed"] == 0 { // guard: the fake ingest really receives events
+	if count["check_failed C6"] == 0 { // guard: the fake ingest really receives events
 		t.Fatalf("no check_failed reached the fake ingest; test is vacuous")
 	}
 	// Correct behaviour per README: at most one report per event per hour.
-	if count["check_failed"] > 1 || count["check_warn"] > 1 {
-		t.Errorf("want at most 1 check_failed and 1 check_warn per hour across restarts, got %v", count)
+	for k, n := range count {
+		if n > 1 {
+			t.Errorf("%s sent %d times across restarts, want at most 1: %v", k, n, count)
+		}
 	}
 }
 

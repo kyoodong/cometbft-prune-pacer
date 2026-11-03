@@ -81,6 +81,11 @@ func preflight(ctx context.Context, cfg *Config, n Node, log *slog.Logger) error
 		log.Warn("check_warn", "id", "C5", "msg", "Prometheus metrics not reachable; logs will lack tx_base/block_base")
 	}
 
+	// C9: the memory floor (--min-mem-avail) needs MemAvailable.
+	if _, err := n.MemAvailable(); err != nil {
+		log.Warn("check_warn", "id", "C9", "msg", "cannot read MemAvailable ("+err.Error()+"); --min-mem-avail is not enforced")
+	}
+
 	// C6: an already-large indexer retain height cannot be lowered, and the
 	// node will try to prune everything below it in one go.
 	latest, _, _, err := n.Status(ctx)

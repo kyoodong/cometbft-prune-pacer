@@ -44,6 +44,7 @@ files or `grpcurl` are needed.
 | C6 | existing indexer retain height ≤ lowest indexed height + `max-step` | exit — the node would prune the whole gap at once |
 | C7 | `min-retain-blocks > 0` (needs `--home`) | warn — block pruning is off otherwise; an unreadable `app.toml` is also only a warning |
 | C8 | `discard_abci_responses` | info — nothing to prune in block results when true |
+| C9 | `MemAvailable` readable (`/proc/meminfo`) | warn — the `--min-mem-avail` floor is off otherwise |
 
 Every other failing check exits with code 3: it is a config error, and the
 systemd unit's `RestartPreventExitStatus=3` stops the restart loop instead of

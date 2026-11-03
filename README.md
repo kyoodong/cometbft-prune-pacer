@@ -287,7 +287,8 @@ retried by systemd; the others with exit code 3):
 
 Warnings only: C1 privileged gRPC `laddr` not bound to loopback (`--home`),
 C5 Prometheus unreachable, C7 `min-retain-blocks = 0` or `app.toml`
-unreadable (`--home`). Info: C8 `discard_abci_responses = true` (`--home`).
+unreadable (`--home`), C9 `MemAvailable` unreadable (not Linux; the
+`--min-mem-avail` floor is off). Info: C8 `discard_abci_responses = true` (`--home`).
 
 ## Settings that compete with the retain heights
 
