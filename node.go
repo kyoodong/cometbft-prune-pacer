@@ -128,21 +128,29 @@ func (n *liveNode) Status(ctx context.Context) (int64, int64, bool, error) {
 	return l, e, r.SyncInfo.CatchingUp, nil
 }
 
+// TxHashesAt returns every tx hash indexed at height h. tx_search pages at
+// 100 (CometBFT maxPerPage), so a busy block needs more than one request.
 func (n *liveNode) TxHashesAt(ctx context.Context, h int64) ([]string, error) {
-	var r struct {
-		Txs []struct {
-			Hash string `json:"hash"`
-		} `json:"txs"`
+	var out []string
+	for page := 1; ; page++ {
+		var r struct {
+			Txs []struct {
+				Hash string `json:"hash"`
+			} `json:"txs"`
+			Total string `json:"total_count"`
+		}
+		q := url.Values{"query": {fmt.Sprintf(`"tx.height=%d"`, h)}, "per_page": {"100"}, "page": {strconv.Itoa(page)}}
+		if err := n.getJSON(ctx, "/tx_search", q, &r); err != nil {
+			return nil, err
+		}
+		for _, t := range r.Txs {
+			out = append(out, t.Hash)
+		}
+		total, _ := strconv.Atoi(r.Total)
+		if len(r.Txs) == 0 || len(out) >= total {
+			return out, nil
+		}
 	}
-	q := url.Values{"query": {fmt.Sprintf(`"tx.height=%d"`, h)}, "per_page": {"100"}}
-	if err := n.getJSON(ctx, "/tx_search", q, &r); err != nil {
-		return nil, err
-	}
-	out := make([]string, 0, len(r.Txs))
-	for _, t := range r.Txs {
-		out = append(out, t.Hash)
-	}
-	return out, nil
 }
 
 func (n *liveNode) TxIndexed(ctx context.Context, hash string) (bool, error) {
