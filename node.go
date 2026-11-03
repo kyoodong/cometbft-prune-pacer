@@ -105,14 +105,21 @@ func (n *liveNode) getJSON(ctx context.Context, path string, q url.Values, out a
 	var env struct {
 		Result json.RawMessage `json:"result"`
 		Error  *struct {
-			Data string `json:"data"`
+			Message string `json:"message"`
+			Data    string `json:"data"`
 		} `json:"error"`
 	}
+	// CometBFT sends RPC errors with HTTP 4xx/5xx and a JSON body, so the
+	// status alone is not an error; a body that is not JSON (a proxy page) is.
 	if err := json.Unmarshal(body, &env); err != nil {
-		return fmt.Errorf("%s: %w", path, err)
+		return fmt.Errorf("%s: HTTP %s: %w", path, resp.Status, err)
 	}
 	if env.Error != nil {
-		return &rpcError{msg: env.Error.Data}
+		msg := env.Error.Data
+		if msg == "" {
+			msg = env.Error.Message
+		}
+		return &rpcError{msg: msg}
 	}
 	return json.Unmarshal(env.Result, out)
 }
@@ -132,8 +139,14 @@ func (n *liveNode) Status(ctx context.Context) (int64, int64, bool, error) {
 	if err := n.getJSON(ctx, "/status", nil, &r); err != nil {
 		return 0, 0, false, err
 	}
-	l, _ := strconv.ParseInt(r.SyncInfo.Latest, 10, 64)
-	e, _ := strconv.ParseInt(r.SyncInfo.Earliest, 10, 64)
+	l, err := strconv.ParseInt(r.SyncInfo.Latest, 10, 64)
+	if err != nil {
+		return 0, 0, false, fmt.Errorf("/status latest_block_height: %w", err)
+	}
+	e, err := strconv.ParseInt(r.SyncInfo.Earliest, 10, 64)
+	if err != nil {
+		return 0, 0, false, fmt.Errorf("/status earliest_block_height: %w", err)
+	}
 	return l, e, r.SyncInfo.CatchingUp, nil
 }
 
