@@ -79,9 +79,17 @@ func preflight(ctx context.Context, cfg *Config, n Node, log *slog.Logger) error
 	if err != nil {
 		return err
 	}
-	cur, ok, err := (&Pacer{node: n}).indexTarget(ctx)
-	if err != nil {
-		return err
+	// Use the larger of the two: the node prunes each index up to its own
+	// retain height, so one large value is enough to cause a huge prune.
+	cur, ok := int64(0), false
+	for _, r := range []Retain{RetainTxIndexer, RetainBlockIndexer} {
+		h, set, err := n.GetRetain(ctx, r)
+		if err != nil {
+			return err
+		}
+		if set {
+			cur, ok = max(cur, h), true
+		}
 	}
 	if ok {
 		low, err := lowestIndexed(ctx, n, latest)
