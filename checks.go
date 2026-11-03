@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -128,11 +127,9 @@ func checkConfigFiles(home string, log *slog.Logger) error {
 
 	var ac appConfig
 	if _, err := toml.DecodeFile(filepath.Join(home, "config", "app.toml"), &ac); err != nil {
-		if os.IsNotExist(err) {
-			log.Warn("check_skipped", "id", "C7", "reason", "app.toml not found")
-			return nil
-		}
-		return &checkFailure{"C7", "cannot read app.toml: " + err.Error(), "check --home"}
+		// C7 is informational; an app.toml it cannot read must not stop the daemon.
+		log.Warn("check_skipped", "id", "C7", "reason", "cannot read app.toml: "+err.Error())
+		return nil
 	}
 	if ac.MinRetainBlocks == 0 {
 		log.Warn("check_warn", "id", "C7",
