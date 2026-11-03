@@ -13,11 +13,11 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 
 ## build: binary for this machine -> bin/cometbft-prune-pacer
 build:
-	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY) .
+	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/$(BINARY)
 
 ## build-linux: static binary for the node -> bin/cometbft-prune-pacer-linux-amd64
 build-linux:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY)-$(GOOS)-$(GOARCH) .
+	GOOS=$(GOOS) GOARCH=$(GOARCH) CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/$(BINARY)-$(GOOS)-$(GOARCH) ./cmd/$(BINARY)
 
 test:
 	go test -count=1 ./...

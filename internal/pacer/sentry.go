@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"context"
@@ -16,9 +16,9 @@ import (
 // paused_low_memory, logged on every poll) to one per window.
 const sentryThrottle = time.Hour
 
-// initSentry enables Sentry when SENTRY_DSN is set. It returns a flush
+// InitSentry enables Sentry when SENTRY_DSN is set. It returns a flush
 // function that is safe to call when Sentry is disabled.
-func initSentry() (enabled bool, flush func(), err error) {
+func InitSentry(release string) (enabled bool, flush func(), err error) {
 	dsn := os.Getenv("SENTRY_DSN")
 	if dsn == "" {
 		return false, func() {}, nil
@@ -26,7 +26,7 @@ func initSentry() (enabled bool, flush func(), err error) {
 	// Environment (SENTRY_ENVIRONMENT) and ServerName (hostname) are SDK defaults.
 	err = sentry.Init(sentry.ClientOptions{
 		Dsn:     dsn,
-		Release: "cometbft-prune-pacer@" + version,
+		Release: release,
 	})
 	if err != nil {
 		// The SDK error quotes the DSN, whose user part is the project key.
@@ -35,10 +35,10 @@ func initSentry() (enabled bool, flush func(), err error) {
 	return true, func() { sentry.Flush(5 * time.Second) }, nil
 }
 
-// sentryHandler forwards Warn and Error log records to Sentry and passes
+// SentryHandler forwards Warn and Error log records to Sentry and passes
 // every record on to the wrapped handler. Normal progress (Info) stays in
 // the logs only.
-type sentryHandler struct {
+type SentryHandler struct {
 	next  slog.Handler
 	attrs []slog.Attr // keys already carry their group prefix
 	group string      // "a.b." after WithGroup("a").WithGroup("b")
@@ -48,8 +48,9 @@ type sentryHandler struct {
 	send  func(level sentry.Level, msg string, fields map[string]any)
 }
 
-func newSentryHandler(next slog.Handler) *sentryHandler {
-	return &sentryHandler{
+// NewSentryHandler wraps next; see SentryHandler.
+func NewSentryHandler(next slog.Handler) *SentryHandler {
+	return &SentryHandler{
 		next: next,
 		mu:   &sync.Mutex{},
 		last: map[string]time.Time{},
@@ -58,11 +59,11 @@ func newSentryHandler(next slog.Handler) *sentryHandler {
 	}
 }
 
-func (h *sentryHandler) Enabled(ctx context.Context, l slog.Level) bool {
+func (h *SentryHandler) Enabled(ctx context.Context, l slog.Level) bool {
 	return h.next.Enabled(ctx, l)
 }
 
-func (h *sentryHandler) Handle(ctx context.Context, r slog.Record) error {
+func (h *SentryHandler) Handle(ctx context.Context, r slog.Record) error {
 	err := h.next.Handle(ctx, r)
 	if r.Level < slog.LevelWarn {
 		return err
@@ -86,7 +87,7 @@ func (h *sentryHandler) Handle(ctx context.Context, r slog.Record) error {
 	return err
 }
 
-func (h *sentryHandler) allow(event string) bool {
+func (h *SentryHandler) allow(event string) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	now := h.now()
@@ -97,7 +98,7 @@ func (h *sentryHandler) allow(event string) bool {
 	return true
 }
 
-func (h *sentryHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+func (h *SentryHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	c := *h
 	c.next = h.next.WithAttrs(attrs)
 	c.attrs = append([]slog.Attr{}, h.attrs...)
@@ -107,7 +108,7 @@ func (h *sentryHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return &c
 }
 
-func (h *sentryHandler) WithGroup(name string) slog.Handler {
+func (h *SentryHandler) WithGroup(name string) slog.Handler {
 	if name == "" {
 		return h
 	}
@@ -155,10 +156,10 @@ func sentryKey(msg string, fields map[string]any) []string {
 	return k
 }
 
-// reportCheckFailure sends a fatal startup check to Sentry before exit. C1
+// ReportCheckFailure sends a fatal startup check to Sentry before exit. C1
 // (node not reachable) is a node problem, not a pacer one: systemd retries it
 // every RestartSec, and node monitoring already alerts on a down node.
-func reportCheckFailure(cf *checkFailure) {
+func ReportCheckFailure(cf *CheckFailure) {
 	if cf.ID == "C1" {
 		return
 	}

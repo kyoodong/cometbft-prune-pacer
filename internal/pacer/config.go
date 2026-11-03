@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"errors"
@@ -29,7 +29,8 @@ type Config struct {
 	DryRun      bool
 }
 
-func parseConfig(args []string) (*Config, error) {
+// ParseConfig reads the run flags, falling back to PACER_* environment variables.
+func ParseConfig(args []string) (*Config, error) {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	c := &Config{}
 	var minMem string

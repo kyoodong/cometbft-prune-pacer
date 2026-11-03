@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func noPanic(t *testing.T, name string, f func()) {
 func TestF07MalformedAddrReturnsError(t *testing.T) {
 	ctx := context.Background()
 	for _, addr := range []string{"127.0.0.1:26657", "http://127.0.0.1:26657 "} {
-		n := &liveNode{rpc: addr, metrics: addr + "/metrics", http: &http.Client{Timeout: time.Second}}
+		n := &LiveNode{rpc: addr, metrics: addr + "/metrics", http: &http.Client{Timeout: time.Second}}
 		noPanic(t, fmt.Sprintf("Status(rpc=%q)", addr), func() {
 			if _, _, _, err := n.Status(ctx); err == nil {
 				t.Errorf("Status(rpc=%q): want error, got nil", addr)
@@ -46,10 +46,6 @@ func TestF07MalformedAddrReturnsError(t *testing.T) {
 			}
 		})
 	}
-}
-
-func (*blockRetainOnly) GetBlockRetainHeight(context.Context, *pruningv1.GetBlockRetainHeightRequest) (*pruningv1.GetBlockRetainHeightResponse, error) {
-	return &pruningv1.GetBlockRetainHeightResponse{}, nil
 }
 
 // fakePruning mimics the node's PruningService, including the Internal error
@@ -83,7 +79,7 @@ func TestLiveNodeGRPCRoundTrip(t *testing.T) {
 	go func() { _ = srv.Serve(lis) }()
 	defer srv.Stop()
 
-	n, err := dialNode(&Config{GRPCAddr: lis.Addr().String()})
+	n, err := DialNode(&Config{GRPCAddr: lis.Addr().String()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +116,7 @@ func TestLiveNodeRPC(t *testing.T) {
 		}
 	}))
 	defer ts.Close()
-	n, _ := dialNode(&Config{GRPCAddr: "127.0.0.1:1", RPCAddr: ts.URL})
+	n, _ := DialNode(&Config{GRPCAddr: "127.0.0.1:1", RPCAddr: ts.URL})
 	ctx := context.Background()
 	if l, e, c, err := n.Status(ctx); err != nil || l != 190000000 || e != 176946601 || c {
 		t.Fatalf("status %d %d %v %v", l, e, c, err)
@@ -158,7 +154,7 @@ func TestGRPCCallsHaveDeadline(t *testing.T) {
 	pruningv1.RegisterPruningServiceServer(srv, &hungPruning{})
 	go func() { _ = srv.Serve(lis) }()
 	defer srv.Stop()
-	n, err := dialNode(&Config{GRPCAddr: lis.Addr().String()})
+	n, err := DialNode(&Config{GRPCAddr: lis.Addr().String()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,7 +192,7 @@ func TestTxHashesAtReadsAllPages(t *testing.T) {
 		fmt.Fprintf(w, `{"result":{"txs":[%s],"total_count":"%d"}}`, strings.Join(hs, ","), n)
 	}))
 	defer ts.Close()
-	node, _ := dialNode(&Config{GRPCAddr: "127.0.0.1:1", RPCAddr: ts.URL})
+	node, _ := DialNode(&Config{GRPCAddr: "127.0.0.1:1", RPCAddr: ts.URL})
 	hs, err := node.TxHashesAt(context.Background(), 1299)
 	if err != nil || len(hs) != n || hs[n-1] != fmt.Sprintf("H%d", n-1) {
 		t.Fatalf("got %d hashes, err=%v; want %d", len(hs), err, n)
@@ -217,7 +213,7 @@ func TestRPCErrorsAreDescriptive(t *testing.T) {
 		}
 	}))
 	defer ts.Close()
-	n, _ := dialNode(&Config{GRPCAddr: "127.0.0.1:1", RPCAddr: ts.URL})
+	n, _ := DialNode(&Config{GRPCAddr: "127.0.0.1:1", RPCAddr: ts.URL})
 	ctx := context.Background()
 	if _, _, _, err := n.Status(ctx); err == nil || !strings.Contains(err.Error(), "502") {
 		t.Errorf("Status on HTML 502: %v", err)
@@ -234,7 +230,7 @@ func TestStatusBadHeightIsError(t *testing.T) {
 		_, _ = w.Write([]byte(`{"result":{"sync_info":{"latest_block_height":"","earliest_block_height":"1"}}}`))
 	}))
 	defer ts.Close()
-	n, _ := dialNode(&Config{GRPCAddr: "127.0.0.1:1", RPCAddr: ts.URL})
+	n, _ := DialNode(&Config{GRPCAddr: "127.0.0.1:1", RPCAddr: ts.URL})
 	if l, _, _, err := n.Status(context.Background()); err == nil {
 		t.Fatalf("latest=%d err=nil for an empty height", l)
 	}

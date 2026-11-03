@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"context"
@@ -15,10 +15,10 @@ import (
 	"github.com/getsentry/sentry-go"
 )
 
-// recordingSentry wraps a sentryHandler with a fake clock and records sends.
-func recordingSentry(now *time.Time) (*sentryHandler, *[]sent) {
+// recordingSentry wraps a SentryHandler with a fake clock and records sends.
+func recordingSentry(now *time.Time) (*SentryHandler, *[]sent) {
 	var got []sent
-	h := newSentryHandler(slog.NewTextHandler(io.Discard, nil))
+	h := NewSentryHandler(slog.NewTextHandler(io.Discard, nil))
 	h.now = func() time.Time { return *now }
 	h.send = func(l sentry.Level, m string, f map[string]any) { got = append(got, sent{l, m, f}) }
 	return h, &got
@@ -54,7 +54,7 @@ enabled = true
 	h.next = slog.NewTextHandler(&logs, nil)
 	f := newFakeNode(1000, 5000, 0, 0) // Metric() returns false -> C5
 	cfg := &Config{MaxStep: 300, MinRetain: 1000, Home: home, GRPCAddr: "127.0.0.1:26659"}
-	if err := preflight(context.Background(), cfg, f, slog.New(h)); err != nil {
+	if err := Preflight(context.Background(), cfg, f, slog.New(h)); err != nil {
 		t.Fatalf("preflight: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func TestVerifyF09StepErrorStaysThrottled(t *testing.T) {
 // A malformed DSN must not be echoed: its user part is the project key.
 func TestBadDSNNotEchoed(t *testing.T) {
 	t.Setenv("SENTRY_DSN", "https://s3cr3tkey@o123.ingest.sentry.io:abc/456")
-	_, _, err := initSentry()
+	_, _, err := InitSentry("test")
 	if err == nil {
 		t.Fatal("want an error for a malformed DSN")
 	}
@@ -148,7 +148,7 @@ func TestBadDSNNotEchoed(t *testing.T) {
 // and attributes under WithGroup keep their group as a key prefix.
 func TestSentryHandlerFieldValues(t *testing.T) {
 	var got map[string]any
-	h := newSentryHandler(slog.NewTextHandler(io.Discard, nil))
+	h := NewSentryHandler(slog.NewTextHandler(io.Discard, nil))
 	h.send = func(_ sentry.Level, _ string, f map[string]any) { got = f }
 	log := slog.New(h)
 
@@ -172,7 +172,7 @@ type sent struct {
 func TestSentryHandlerForwardsAndThrottles(t *testing.T) {
 	var got []sent
 	now := time.Unix(0, 0)
-	h := newSentryHandler(slog.NewTextHandler(io.Discard, nil))
+	h := NewSentryHandler(slog.NewTextHandler(io.Discard, nil))
 	h.now = func() time.Time { return now }
 	h.send = func(l sentry.Level, m string, f map[string]any) { got = append(got, sent{l, m, f}) }
 	log := slog.New(h).With("node", "q2")

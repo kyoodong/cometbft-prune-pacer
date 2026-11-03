@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"bufio"
@@ -53,7 +53,8 @@ type Node interface {
 	Metric(ctx context.Context, name string) (int64, bool)
 }
 
-type liveNode struct {
+// LiveNode talks to a real node over CometBFT RPC and the privileged gRPC.
+type LiveNode struct {
 	rpc     string
 	metrics string
 	http    *http.Client
@@ -65,7 +66,8 @@ type liveNode struct {
 // not the daemon. A var so tests can shorten it.
 var rpcTimeout = 60 * time.Second
 
-func dialNode(c *Config) (*liveNode, error) {
+// DialNode prepares the RPC client and the gRPC connection; nothing is sent yet.
+func DialNode(c *Config) (*LiveNode, error) {
 	conn, err := grpc.NewClient(c.GRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithUnaryInterceptor(func(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 			ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
@@ -75,7 +77,7 @@ func dialNode(c *Config) (*liveNode, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &liveNode{
+	return &LiveNode{
 		rpc:     c.RPCAddr,
 		metrics: c.MetricsAddr,
 		http:    &http.Client{Timeout: rpcTimeout},
@@ -84,7 +86,10 @@ func dialNode(c *Config) (*liveNode, error) {
 	}, nil
 }
 
-func (n *liveNode) getJSON(ctx context.Context, path string, q url.Values, out any) error {
+// Close releases the gRPC connection.
+func (n *LiveNode) Close() error { return n.conn.Close() }
+
+func (n *LiveNode) getJSON(ctx context.Context, path string, q url.Values, out any) error {
 	u := n.rpc + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
@@ -128,7 +133,7 @@ type rpcError struct{ msg string }
 
 func (e *rpcError) Error() string { return e.msg }
 
-func (n *liveNode) Status(ctx context.Context) (int64, int64, bool, error) {
+func (n *LiveNode) Status(ctx context.Context) (int64, int64, bool, error) {
 	var r struct {
 		SyncInfo struct {
 			Latest     string `json:"latest_block_height"`
@@ -152,7 +157,7 @@ func (n *liveNode) Status(ctx context.Context) (int64, int64, bool, error) {
 
 // TxHashesAt returns every tx hash indexed at height h. tx_search pages at
 // 100 (CometBFT maxPerPage), so a busy block needs more than one request.
-func (n *liveNode) TxHashesAt(ctx context.Context, h int64) ([]string, error) {
+func (n *LiveNode) TxHashesAt(ctx context.Context, h int64) ([]string, error) {
 	var out []string
 	for page := 1; ; page++ {
 		var r struct {
@@ -175,7 +180,7 @@ func (n *liveNode) TxHashesAt(ctx context.Context, h int64) ([]string, error) {
 	}
 }
 
-func (n *liveNode) TxIndexed(ctx context.Context, hash string) (bool, error) {
+func (n *LiveNode) TxIndexed(ctx context.Context, hash string) (bool, error) {
 	var r json.RawMessage
 	err := n.getJSON(ctx, "/tx", url.Values{"hash": {"0x" + hash}}, &r)
 	var re *rpcError
@@ -185,7 +190,7 @@ func (n *liveNode) TxIndexed(ctx context.Context, hash string) (bool, error) {
 	return err == nil, err
 }
 
-func (n *liveNode) BlockIndexed(ctx context.Context, h int64) (bool, error) {
+func (n *LiveNode) BlockIndexed(ctx context.Context, h int64) (bool, error) {
 	var r struct {
 		Total string `json:"total_count"`
 	}
@@ -196,7 +201,7 @@ func (n *liveNode) BlockIndexed(ctx context.Context, h int64) (bool, error) {
 	return r.Total != "0", nil
 }
 
-func (n *liveNode) GetRetain(ctx context.Context, r Retain) (int64, bool, error) {
+func (n *LiveNode) GetRetain(ctx context.Context, r Retain) (int64, bool, error) {
 	var h uint64
 	var err error
 	switch r {
@@ -238,7 +243,7 @@ func (n *liveNode) GetRetain(ctx context.Context, r Retain) (int64, bool, error)
 	return int64(h), h > 0, nil
 }
 
-func (n *liveNode) SetRetain(ctx context.Context, r Retain, h int64) error {
+func (n *LiveNode) SetRetain(ctx context.Context, r Retain, h int64) error {
 	u := uint64(h)
 	var err error
 	switch r {
@@ -254,7 +259,7 @@ func (n *liveNode) SetRetain(ctx context.Context, r Retain, h int64) error {
 	return err
 }
 
-func (n *liveNode) MemAvailable() (uint64, error) {
+func (n *LiveNode) MemAvailable() (uint64, error) {
 	f, err := os.Open("/proc/meminfo")
 	if err != nil {
 		return 0, err
@@ -272,7 +277,7 @@ func (n *liveNode) MemAvailable() (uint64, error) {
 }
 
 // Metric returns a cometbft_state_* gauge, if Prometheus is reachable.
-func (n *liveNode) Metric(ctx context.Context, name string) (int64, bool) {
+func (n *LiveNode) Metric(ctx context.Context, name string) (int64, bool) {
 	if n.metrics == "" {
 		return 0, false
 	}

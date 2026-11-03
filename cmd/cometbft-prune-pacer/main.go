@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/kyoodong/cometbft-prune-pacer/internal/pacer"
 )
 
 var version = "dev"
@@ -44,7 +45,7 @@ func main() {
 		// A config error needs the operator; exit 3 so the unit's
 		// RestartPreventExitStatus=3 stops the restart loop. C1 (node not
 		// reachable yet) exits 1 and is retried.
-		var cf *checkFailure
+		var cf *pacer.CheckFailure
 		if errors.As(err, &cf) && cf.ID != "C1" {
 			os.Exit(3)
 		}
@@ -53,19 +54,19 @@ func main() {
 }
 
 func run(args []string) error {
-	cfg, err := parseConfig(args)
+	cfg, err := pacer.ParseConfig(args)
 	if err != nil {
 		// Usage only helps with a bad command line, not with a failed check.
 		return fmt.Errorf("%w\n%s", err, usage)
 	}
-	sentryOn, flush, err := initSentry()
+	sentryOn, flush, err := pacer.InitSentry("cometbft-prune-pacer@" + version)
 	if err != nil {
 		return err
 	}
 	defer flush()
 	var handler slog.Handler = slog.NewJSONHandler(os.Stdout, nil)
 	if sentryOn {
-		handler = newSentryHandler(handler)
+		handler = pacer.NewSentryHandler(handler)
 		defer func() {
 			if r := recover(); r != nil {
 				sentry.CurrentHub().Recover(r)
@@ -78,23 +79,22 @@ func run(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	n, err := dialNode(cfg)
+	n, err := pacer.DialNode(cfg)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = n.conn.Close() }()
+	defer func() { _ = n.Close() }()
 
-	if err := preflight(ctx, cfg, n, log); err != nil {
-		var cf *checkFailure
+	if err := pacer.Preflight(ctx, cfg, n, log); err != nil {
+		var cf *pacer.CheckFailure
 		if sentryOn && errors.As(err, &cf) {
-			reportCheckFailure(cf)
+			pacer.ReportCheckFailure(cf)
 		}
 		return err
 	}
-	p := NewPacer(cfg, n, log)
+	p := pacer.NewPacer(cfg, n, log)
 	if cfg.Listen != "" {
-		p.m = newMetrics()
-		p.m.serve(ctx, cfg.Listen, log)
+		p.ServeMetrics(ctx, cfg.Listen)
 	}
 	log.Info("started", "version", version, "max_step", cfg.MaxStep, "min_retain", cfg.MinRetain,
 		"min_mem_avail_mib", cfg.MinMemAvail>>20,

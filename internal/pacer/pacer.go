@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"context"
@@ -25,6 +25,7 @@ type Pacer struct {
 	start int64 // lowest indexed height, resolved once
 }
 
+// NewPacer returns a pacer with metrics off; see ServeMetrics.
 func NewPacer(cfg *Config, n Node, log *slog.Logger) *Pacer {
 	return &Pacer{cfg: cfg, node: n, log: log, sleep: sleepCtx, now: time.Now}
 }

@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"context"
@@ -13,13 +13,13 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// checkFailure is a startup check that must stop the daemon. Fix tells the
+// CheckFailure is a startup check that must stop the daemon. Fix tells the
 // operator exactly what to change.
-type checkFailure struct {
+type CheckFailure struct {
 	ID, What, Fix string
 }
 
-func (c *checkFailure) Error() string {
+func (c *CheckFailure) Error() string {
 	return fmt.Sprintf("[%s] %s\n  fix: %s", c.ID, c.What, c.Fix)
 }
 
@@ -47,21 +47,21 @@ type appConfig struct {
 	MinRetainBlocks int64 `toml:"min-retain-blocks"`
 }
 
-// preflight runs the startup checks. A returned error stops the daemon.
-func preflight(ctx context.Context, cfg *Config, n Node, log *slog.Logger) error {
+// Preflight runs the startup checks. A returned error stops the daemon.
+func Preflight(ctx context.Context, cfg *Config, n Node, log *slog.Logger) error {
 	// C1/C2: privileged gRPC reachable and PruningService enabled.
 	if _, _, err := n.GetRetain(ctx, RetainBlock); err != nil {
 		if s, ok := status.FromError(err); ok && s.Code() == codes.Unimplemented {
-			return &checkFailure{"C2", "PruningService is not enabled at " + cfg.GRPCAddr,
+			return &CheckFailure{"C2", "PruningService is not enabled at " + cfg.GRPCAddr,
 				`config.toml: [grpc.privileged.pruning_service] enabled = true, then restart the node; or --grpc-addr points at the non-privileged [grpc] port instead of [grpc.privileged] laddr`}
 		}
 		// The companion block retain key is only created when data companion
 		// pruning is enabled, so this also catches C3 without --home.
 		if s, ok := status.FromError(err); ok && s.Code() == codes.Internal && strings.Contains(s.Message(), "companion") {
-			return &checkFailure{"C3", "data companion pruning is disabled; the node never prunes its indexes",
+			return &CheckFailure{"C3", "data companion pruning is disabled; the node never prunes its indexes",
 				"config.toml: [storage.pruning.data_companion] enabled = true, then restart the node"}
 		}
-		return &checkFailure{"C1", "privileged gRPC is not reachable at " + cfg.GRPCAddr + ": " + err.Error(),
+		return &CheckFailure{"C1", "privileged gRPC is not reachable at " + cfg.GRPCAddr + ": " + err.Error(),
 			`config.toml: [grpc.privileged] laddr = "tcp://127.0.0.1:26659" (bind to 127.0.0.1 only), then restart the node`}
 	}
 
@@ -110,7 +110,7 @@ func preflight(ctx context.Context, cfg *Config, n Node, log *slog.Logger) error
 			return err
 		}
 		if cur-low > cfg.MaxStep {
-			return &checkFailure{"C6",
+			return &CheckFailure{"C6",
 				fmt.Sprintf("indexer retain height %d is %d blocks above the lowest indexed height %d (max-step %d); the node would prune all of it at once",
 					cur, cur-low, low, cfg.MaxStep),
 				"stop the node, delete the indexer retain-height keys from data/tx_index.db, start the node, then run the pacer"}
@@ -122,14 +122,14 @@ func preflight(ctx context.Context, cfg *Config, n Node, log *slog.Logger) error
 func checkConfigFiles(home string, log *slog.Logger) error {
 	var cc cometConfig
 	if _, err := toml.DecodeFile(filepath.Join(home, "config", "config.toml"), &cc); err != nil {
-		return &checkFailure{"C3", "cannot read config.toml: " + err.Error(), "check --home"}
+		return &CheckFailure{"C3", "cannot read config.toml: " + err.Error(), "check --home"}
 	}
 	if !cc.Storage.Pruning.DataCompanion.Enabled {
-		return &checkFailure{"C3", "data companion pruning is disabled; the node never prunes its indexes",
+		return &CheckFailure{"C3", "data companion pruning is disabled; the node never prunes its indexes",
 			"config.toml: [storage.pruning.data_companion] enabled = true, then restart the node"}
 	}
 	if cc.TxIndex.Indexer != "kv" {
-		return &checkFailure{"C4", fmt.Sprintf("tx indexer is %q; only \"kv\" can be pruned", cc.TxIndex.Indexer),
+		return &CheckFailure{"C4", fmt.Sprintf("tx indexer is %q; only \"kv\" can be pruned", cc.TxIndex.Indexer),
 			`nothing to do unless config.toml has [tx_index] indexer = "kv"`}
 	}
 	if l := cc.GRPC.Privileged.Laddr; l != "" && !localLaddr(l) {

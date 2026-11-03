@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"context"
@@ -23,8 +23,8 @@ func TestPreflightRejectsLargeExistingTarget(t *testing.T) {
 	f := newFakeNode(1000, 5000, 0, 0)
 	f.retain[RetainTxIndexer] = 3000
 	cfg := &Config{MaxStep: 300, MinRetain: 1000}
-	err := preflight(context.Background(), cfg, f, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	var cf *checkFailure
+	err := Preflight(context.Background(), cfg, f, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	var cf *CheckFailure
 	if !errors.As(err, &cf) || cf.ID != "C6" {
 		t.Fatalf("want C6 failure, got %v", err)
 	}
@@ -37,9 +37,9 @@ func TestVerifyF03PreflightCatchesLargeTxRetain(t *testing.T) {
 	f := newFakeNode(1000, 5000, 0, 0)
 	f.retain[RetainTxIndexer], f.retain[RetainBlockIndexer] = 3000, 1000
 	cfg := &Config{MaxStep: 300, MinRetain: 1000}
-	err := preflight(context.Background(), cfg, f, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	err := Preflight(context.Background(), cfg, f, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Logf("preflight tx=3000 blk=1000 low=1000 max-step=300: err=%v", err)
-	var cf *checkFailure
+	var cf *CheckFailure
 	if !errors.As(err, &cf) || cf.ID != "C6" {
 		t.Fatalf("want C6 failure, got %v", err)
 	}
@@ -179,12 +179,12 @@ func TestDataCompanionOffDetectedWithoutHome(t *testing.T) {
 	defer srv.Stop()
 
 	cfg := &Config{GRPCAddr: lis.Addr().String(), RPCAddr: "http://127.0.0.1:1", MaxStep: 100}
-	n, err := dialNode(cfg)
+	n, err := DialNode(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = preflight(context.Background(), cfg, n, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	var cf *checkFailure
+	err = Preflight(context.Background(), cfg, n, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	var cf *CheckFailure
 	if !errors.As(err, &cf) || cf.ID != "C3" {
 		t.Fatalf("want C3 failure, got %v", err)
 	}
@@ -199,7 +199,7 @@ func TestMemAvailableUnreadableWarns(t *testing.T) {
 	var logs strings.Builder
 	cfg := &Config{MaxStep: 300, MinRetain: 1000, GRPCAddr: "127.0.0.1:26659"}
 	n := noMemNode{newFakeNode(1000, 5000, 0, 0)}
-	if err := preflight(context.Background(), cfg, n, slog.New(slog.NewTextHandler(&logs, nil))); err != nil {
+	if err := Preflight(context.Background(), cfg, n, slog.New(slog.NewTextHandler(&logs, nil))); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(logs.String(), "id=C9") {
@@ -211,7 +211,7 @@ func TestMemAvailableUnreadableWarns(t *testing.T) {
 func TestRemoteGRPCAddrWarns(t *testing.T) {
 	var logs strings.Builder
 	cfg := &Config{MaxStep: 300, MinRetain: 1000, GRPCAddr: "10.0.0.5:26659"}
-	if err := preflight(context.Background(), cfg, newFakeNode(1000, 5000, 0, 0), slog.New(slog.NewTextHandler(&logs, nil))); err != nil {
+	if err := Preflight(context.Background(), cfg, newFakeNode(1000, 5000, 0, 0), slog.New(slog.NewTextHandler(&logs, nil))); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(logs.String(), "is not loopback") {

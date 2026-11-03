@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"context"
@@ -52,7 +52,7 @@ func newMetrics() *metrics {
 		emptySteps: c("empty_steps_total", "Steps whose range had no indexed txs."),
 		errors:     c("errors_total", "Loop iterations that ended in an error."),
 		stepSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{Namespace: "pacer", Name: "step_duration_seconds",
-			Help:    "Time from Set until the step's witnesses were gone.",
+			Help: "Time from Set until the step's witnesses were gone.",
 			// From the default --poll (30s; nothing is observed sooner) to a day,
 			// so steps beyond the default --step-timeout (2h) are not all +Inf.
 			Buckets: []float64{30, 60, 120, 300, 600, 1200, 1800, 3600, 7200, 14400, 28800, 86400}}),
@@ -63,6 +63,12 @@ func newMetrics() *metrics {
 		m.paused.WithLabelValues(r).Set(0)
 	}
 	return m
+}
+
+// ServeMetrics turns metrics on and exposes them on addr until ctx is cancelled.
+func (p *Pacer) ServeMetrics(ctx context.Context, addr string) {
+	p.m = newMetrics()
+	p.m.serve(ctx, addr, p.log)
 }
 
 // serve exposes /metrics until ctx is cancelled.

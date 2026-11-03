@@ -1,4 +1,4 @@
-package main
+package pacer
 
 import (
 	"context"
@@ -16,7 +16,7 @@ import (
 // tx-indexer Set history, or the parse error if the flag value was rejected.
 func f05Step(t *testing.T, minMem string, avail uint64) ([]int64, error) {
 	t.Helper()
-	cfg, err := parseConfig([]string{"--max-step", "300", "--min-retain", "1000", "--min-mem-avail", minMem})
+	cfg, err := ParseConfig([]string{"--max-step", "300", "--min-retain", "1000", "--min-mem-avail", minMem})
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ func TestF06RejectsNonPositiveDurations(t *testing.T) {
 		{"--step-timeout", "0"},
 	}
 	for _, c := range cases {
-		cfg, err := parseConfig(append(append([]string{}, base...), c...))
+		cfg, err := ParseConfig(append(append([]string{}, base...), c...))
 		if err == nil {
 			t.Errorf("%v accepted: poll=%v wait=%v step-timeout=%v", c, cfg.Poll, cfg.Wait, cfg.StepTimeout)
 		}
@@ -88,11 +88,11 @@ func TestF06RejectsNonPositiveDurations(t *testing.T) {
 	// Environment path: a bare "0" also parses; "30" (no unit) is rejected
 	// as malformed (see TestBadEnvValueFails).
 	t.Setenv("PACER_POLL", "30s")
-	if cfg, err := parseConfig(base); err != nil || cfg.Poll != 30*time.Second {
+	if cfg, err := ParseConfig(base); err != nil || cfg.Poll != 30*time.Second {
 		t.Fatalf("control PACER_POLL=30s: poll=%v err=%v", cfg.Poll, err)
 	}
 	t.Setenv("PACER_POLL", "0")
-	if cfg, err := parseConfig(base); err == nil {
+	if cfg, err := ParseConfig(base); err == nil {
 		t.Errorf("PACER_POLL=0 accepted: poll=%v", cfg.Poll)
 	}
 }
@@ -118,10 +118,10 @@ func (n *f06Node) TxIndexed(ctx context.Context, h string) (bool, error) {
 }
 
 // f06Pacer builds the pacer from parsed flags and keeps the production sleepCtx.
-// ok=false means parseConfig refused the flags (the desired outcome for poll<=0).
+// ok=false means ParseConfig refused the flags (the desired outcome for poll<=0).
 func f06Pacer(t *testing.T, poll string) (*Pacer, *f06Node, bool) {
 	t.Helper()
-	cfg, err := parseConfig([]string{"--max-step", "300", "--min-retain", "1000", "--poll", poll})
+	cfg, err := ParseConfig([]string{"--max-step", "300", "--min-retain", "1000", "--poll", poll})
 	if err != nil {
 		t.Logf("--poll %s rejected: %v", poll, err)
 		return nil, nil, false
@@ -191,7 +191,7 @@ func TestBadEnvValueFails(t *testing.T) {
 			t.Setenv("PACER_MAX_STEP", "100")
 			t.Setenv("PACER_MIN_RETAIN", "100")
 			t.Setenv(k, v)
-			_, err := parseConfig(nil)
+			_, err := ParseConfig(nil)
 			if err == nil || !strings.Contains(err.Error(), k) {
 				t.Fatalf("%s=%q: want an error naming %s, got %v", k, v, k, err)
 			}
@@ -204,7 +204,7 @@ func TestDryRunEnvBool(t *testing.T) {
 		t.Setenv("PACER_MAX_STEP", "100")
 		t.Setenv("PACER_MIN_RETAIN", "100")
 		t.Setenv("PACER_DRY_RUN", v)
-		c, err := parseConfig(nil)
+		c, err := ParseConfig(nil)
 		if err != nil || c.DryRun != want {
 			t.Fatalf("PACER_DRY_RUN=%s: DryRun=%v err=%v, want %v", v, c != nil && c.DryRun, err, want)
 		}
@@ -218,7 +218,7 @@ func TestLeftoverArgsRejected(t *testing.T) {
 		{"--max-step", "5", "--min-retain", "5", "run"},
 		{"rnu", "--max-step", "5", "--min-retain", "5"},
 	} {
-		if _, err := parseConfig(args); err == nil {
+		if _, err := ParseConfig(args); err == nil {
 			t.Errorf("%q accepted", args)
 		}
 	}
@@ -227,7 +227,7 @@ func TestLeftoverArgsRejected(t *testing.T) {
 // Operators copy laddr from config.toml ("tcp://127.0.0.1:26659"); gRPC
 // rejected it with "too many colons in address" and the pacer reported C1.
 func TestGRPCAddrAcceptsTCPScheme(t *testing.T) {
-	c, err := parseConfig([]string{"--max-step", "5", "--min-retain", "5", "--grpc-addr", "tcp://127.0.0.1:26659"})
+	c, err := ParseConfig([]string{"--max-step", "5", "--min-retain", "5", "--grpc-addr", "tcp://127.0.0.1:26659"})
 	if err != nil || c.GRPCAddr != "127.0.0.1:26659" {
 		t.Fatalf("GRPCAddr %q err=%v", c.GRPCAddr, err)
 	}

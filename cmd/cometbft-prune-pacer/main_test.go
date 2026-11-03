@@ -26,6 +26,10 @@ type blockRetainOnly struct {
 	pruningv1.UnimplementedPruningServiceServer
 }
 
+func (*blockRetainOnly) GetBlockRetainHeight(context.Context, *pruningv1.GetBlockRetainHeightRequest) (*pruningv1.GetBlockRetainHeightResponse, error) {
+	return &pruningv1.GetBlockRetainHeightResponse{}, nil
+}
+
 // TestF07RunWithHostPortAddr drives the real entry point run() past C1/C2
 // with a reachable gRPC server and a host:port --rpc-addr / --metrics-addr.
 // run must return an error (exit 1), not panic (exit 2).
@@ -124,7 +128,7 @@ func TestVerifyF10Child(t *testing.T) {
 // f10PreventExitStatus reads RestartPreventExitStatus= from the README
 // systemd unit, the restart policy operators deploy.
 func f10PreventExitStatus(t *testing.T) map[int]bool {
-	b, err := os.ReadFile("README.md")
+	b, err := os.ReadFile("../../README.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,4 +244,15 @@ func TestC1NotReportedToSentry(t *testing.T) {
 	if len(ing.events) != 0 {
 		t.Fatalf("C1 reached Sentry: %+v", ing.events)
 	}
+}
+
+// noPanic runs f and turns a panic into a test error.
+func noPanic(t *testing.T, name string, f func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("%s panicked: %v", name, r)
+		}
+	}()
+	f()
 }
